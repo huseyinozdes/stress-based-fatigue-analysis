@@ -2,6 +2,8 @@
 
 This repository now includes a lightweight web app for quick-reference fatigue-life estimation.
 
+**Live App:** [https://stressbasedfatigue.streamlit.app](https://stressbasedfatigue.streamlit.app)
+
 ## What this v1 tool does
 
 - Collects core engineering inputs: **material**, **section diameter**, **axial force**, **bending moment**, and fatigue modifiers.
