@@ -11,6 +11,7 @@ This repository now includes a lightweight web app for quick-reference fatigue-l
   - **Stress-life (S-N)** for high-cycle screening,
   - **Strain-life (epsilon-N)** using Manson-Coffin-Basquin style estimation.
 - Adds optional **statistical reliability** from fatigue test data using two-parameter Weibull MLE with right-censored run-outs.
+- Includes a **unit-system toggle** (SI primary or Imperial primary) with inline passive conversions next to inputs.
 - Reports:
   - estimated life (cycles),
   - key intermediate values (Marin factors, endurance limits, Goodman-adjusted stress, Basquin coefficients),
@@ -83,6 +84,16 @@ Accepted status tokens:
 - right-censored run-out: `runout`, `censored`, `r`
 
 All cycles must be positive.
+
+## Unit handling
+
+- Inputs can be entered in **SI primary** or **Imperial primary** mode.
+- The app shows counterpart-unit hints inline (for example mm <-> in, N <-> lbf, N*m <-> lbf*in, MPa <-> ksi).
+- Internal fatigue calculations are normalized to a consistent SI base:
+  - geometry in mm,
+  - force in N,
+  - moment in N*mm,
+  - stress/strength in MPa.
 
 ## Local run
 
