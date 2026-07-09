@@ -12,6 +12,7 @@ This repository now includes a lightweight web app for quick-reference fatigue-l
   - **Strain-life (epsilon-N)** using Manson-Coffin-Basquin style estimation.
 - Adds optional **statistical reliability** from fatigue test data using two-parameter Weibull MLE with right-censored run-outs.
 - Includes a **unit-system toggle** (SI primary or Imperial primary) with inline passive conversions next to inputs.
+- Uses **LaTeX-friendly scientific notation** in the UI and includes a **Nomenclature & Symbols** panel for quick symbol lookup.
 - Reports:
   - estimated life (cycles),
   - key intermediate values (Marin factors, endurance limits, Goodman-adjusted stress, Basquin coefficients),
@@ -94,6 +95,11 @@ All cycles must be positive.
   - force in N,
   - moment in N*mm,
   - stress/strength in MPa.
+
+## Nomenclature and notation
+
+- The app includes a top-level **Nomenclature & Symbols** expander listing symbol, meaning, and units.
+- A thesis nomenclature file was not found in this repository, so the panel currently uses an app-baseline nomenclature derived from implemented stress-life, strain-life, and Weibull reliability variables.
 
 ## Local run
 

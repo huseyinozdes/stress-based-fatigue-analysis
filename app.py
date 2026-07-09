@@ -139,6 +139,32 @@ def _weibull_survival_curve_data(beta_shape: float, eta_scale_cycles: float) -> 
     return data
 
 
+def _nomenclature_rows() -> list[tuple[str, str, str]]:
+    return [
+        (r"$d$", "Section diameter", "mm or in"),
+        (r"$A$", "Section area", r"mm$^2$"),
+        (r"$F_m,\ F_a$", "Mean and alternating axial force", "N or lbf"),
+        (r"$M_m,\ M_a$", "Mean and alternating bending moment", "N*m or lbf*in"),
+        (r"$\sigma_m,\ \sigma_a$", "Mean and alternating nominal stress", "MPa or ksi"),
+        (r"$\sigma_{a,eq}$", "Goodman-equivalent alternating stress", "MPa or ksi"),
+        (r"$S_{ut}$", "Ultimate tensile strength", "MPa or ksi"),
+        (r"$S_e',\ S_e$", "Uncorrected and corrected endurance limit", "MPa or ksi"),
+        (r"$N_f$", "Cycles to failure", "cycles"),
+        (r"$\varepsilon_a$", "Total strain amplitude", "mm/mm"),
+        (r"$\sigma_f',\ \varepsilon_f',\ b,\ c,\ E$", "Strain-life material constants", "-, MPa or ksi"),
+        (r"$\beta,\ \eta$", "Weibull shape and scale parameters", "-, cycles"),
+        (r"$R(N)$", "Survival probability at cycle count $N$", "0 to 1"),
+        (r"$B_{10},\ B_{50}$", "10% and 50% failure-life quantiles", "cycles"),
+    ]
+
+
+def _render_nomenclature() -> None:
+    rows = _nomenclature_rows()
+    header = "| Symbol | Meaning | Units |\n|---|---|---|\n"
+    body = "\n".join(f"| {symbol} | {meaning} | {units} |" for symbol, meaning, units in rows)
+    st.markdown(header + body)
+
+
 st.set_page_config(page_title="Fatigue Life Estimator (v2)", layout="wide")
 st.title("Fatigue Life Estimator (v2)")
 st.caption("Quick engineering fatigue estimator for screening decisions. Results are estimates, not design certification.")
@@ -149,11 +175,15 @@ unit_system: UnitSystem = "SI" if unit_mode_label == "SI primary" else "Imperial
 with st.expander("Model options", expanded=False):
     st.markdown(
         """
-        - **Stress-life (S-N):** Basquin + Marin factors + Goodman correction
-        - **Strain-life (epsilon-N):** Manson-Coffin-Basquin with Morrow mean-stress correction
+        - **Stress-life (S-N):** Basquin + Marin factors + Goodman correction using $\\sigma_a,\\sigma_m,S_e,S_{ut},N_f$
+        - **Strain-life (epsilon-N):** Manson-Coffin-Basquin with Morrow correction using $\\varepsilon_a,\\sigma_f',\\varepsilon_f',b,c,E$
         - **Reliability statistics:** two-parameter Weibull with right-censored run-out handling
         """
     )
+
+with st.expander("Nomenclature & Symbols", expanded=False):
+    st.caption("Thesis nomenclature source was not found in this repository, so this panel uses the app's model-based baseline nomenclature.")
+    _render_nomenclature()
 
 model_mode = st.radio(
     "Select deterministic model",
@@ -184,7 +214,7 @@ col1, col2 = st.columns(2)
 with col1:
     material_name = st.selectbox("Material", list(MATERIALS.keys()), index=0)
     diameter_value = st.number_input(
-        f"Section diameter d ({diameter_unit})",
+        f"Section diameter, d ({diameter_unit})",
         min_value=0.001,
         value=float(diameter_default),
         step=0.1 if unit_system == "SI" else 0.01,
@@ -194,12 +224,13 @@ with col1:
         st.caption(_format_conversion_hint(mm_to_in(diameter_value), "in"))
     else:
         st.caption(_format_conversion_hint(diameter_value * 25.4, "mm"))
+    st.markdown(r"Small-note symbol: $d$; area relation $A=\pi d^2/4$")
 
     surface_finish = st.selectbox("Surface finish", list(SURFACE_FINISH_COEFFICIENTS.keys()), index=1)
     reliability = st.selectbox("Reliability (%)", list(RELIABILITY_FACTOR.keys()), index=2)
     load_type = st.selectbox("Primary loading type for kc", list(LOAD_FACTOR.keys()), index=0)
     k_misc = st.number_input(
-        "Miscellaneous Marin factor kf",
+        "Miscellaneous Marin factor, kf",
         min_value=0.1,
         max_value=1.5,
         value=1.0,
@@ -211,7 +242,7 @@ with col2:
     st.subheader("Loading inputs")
     st.caption(f"Primary units: force in {force_unit}, moment in {moment_unit}.")
     axial_mean_value = st.number_input(
-        f"Mean axial force Fm ({force_unit})",
+        f"Mean axial force, Fm ({force_unit})",
         min_value=0.0,
         value=float(force_mean_default),
         step=100.0 if unit_system == "SI" else 10.0,
@@ -221,9 +252,10 @@ with col2:
         st.caption(_format_conversion_hint(n_to_lbf(axial_mean_value), "lbf"))
     else:
         st.caption(_format_conversion_hint(axial_mean_value * 4.4482216152605, "N"))
+    st.markdown(r"Symbol mapping: $F_m$ is mean load.")
 
     axial_alt_value = st.number_input(
-        f"Alternating axial force amplitude Fa ({force_unit})",
+        f"Alternating axial force amplitude, Fa ({force_unit})",
         min_value=0.0,
         value=float(force_alt_default),
         step=100.0 if unit_system == "SI" else 10.0,
@@ -233,9 +265,10 @@ with col2:
         st.caption(_format_conversion_hint(n_to_lbf(axial_alt_value), "lbf"))
     else:
         st.caption(_format_conversion_hint(axial_alt_value * 4.4482216152605, "N"))
+    st.markdown(r"Symbol mapping: $F_a$ is alternating amplitude.")
 
     moment_mean_value = st.number_input(
-        f"Mean bending moment Mm ({moment_unit})",
+        f"Mean bending moment, Mm ({moment_unit})",
         min_value=0.0,
         value=float(moment_mean_default),
         step=0.5 if unit_system == "SI" else 5.0,
@@ -245,9 +278,10 @@ with col2:
         st.caption(_format_conversion_hint(nm_to_lbfin(moment_mean_value), "lbf*in"))
     else:
         st.caption(_format_conversion_hint(lbfin_to_nm(moment_mean_value), "N*m"))
+    st.markdown(r"Symbol mapping: $M_m$ is mean bending moment.")
 
     moment_alt_value = st.number_input(
-        f"Alternating bending moment amplitude Ma ({moment_unit})",
+        f"Alternating bending moment amplitude, Ma ({moment_unit})",
         min_value=0.0,
         value=float(moment_alt_default),
         step=0.5 if unit_system == "SI" else 5.0,
@@ -257,13 +291,14 @@ with col2:
         st.caption(_format_conversion_hint(nm_to_lbfin(moment_alt_value), "lbf*in"))
     else:
         st.caption(_format_conversion_hint(lbfin_to_nm(moment_alt_value), "N*m"))
+    st.markdown(r"Symbol mapping: $M_a$ is alternating bending moment amplitude.")
 
 st.markdown("##### Input quick guide")
 g1, g2 = st.columns(2)
 with g1:
-    st.info("Geometry: `d` defines area `A = pi*d^2/4`.\n\nAxial load: `Fm` is mean, `Fa` is alternating amplitude.")
+    st.info("Geometry: $d$ defines area $A=\\pi d^2/4$.\n\nAxial load: $F_m$ is mean, $F_a$ is alternating amplitude.")
 with g2:
-    st.info("Bending: `Mm` is mean, `Ma` is alternating amplitude.\n\nUse positive amplitudes for alternating terms.")
+    st.info("Bending: $M_m$ is mean, $M_a$ is alternating amplitude.\n\nUse positive amplitudes for alternating terms.")
 
 strain_inputs: StrainLifeInput | None = None
 if model_mode == "Strain-life (epsilon-N)":
@@ -282,7 +317,7 @@ if model_mode == "Strain-life (epsilon-N)":
     sc1, sc2, sc3 = st.columns(3)
     with sc1:
         elastic_modulus_value = st.number_input(
-            f"Elastic modulus E ({stress_constant_unit})",
+            f"Elastic modulus, E ({stress_constant_unit})",
             min_value=1.0,
             value=float(e_default),
             step=1000.0 if unit_system == "SI" else 100.0,
@@ -294,7 +329,7 @@ if model_mode == "Strain-life (epsilon-N)":
             st.caption(_format_conversion_hint(ksi_to_mpa(elastic_modulus_value), "MPa"))
 
         sigma_f_prime_value = st.number_input(
-            f"Fatigue strength coefficient sigma_f' ({stress_constant_unit})",
+            f"Fatigue strength coefficient, sigma_f' ({stress_constant_unit})",
             min_value=0.1,
             value=float(sigmaf_default),
             step=10.0 if unit_system == "SI" else 1.0,
@@ -307,7 +342,7 @@ if model_mode == "Strain-life (epsilon-N)":
 
     with sc2:
         epsilon_f_prime = st.number_input(
-            "Fatigue ductility coefficient epsilon_f' (-)",
+            "Fatigue ductility coefficient, epsilon_f' (-)",
             min_value=0.001,
             value=float(defaults["epsilon_f_prime"]),
             step=0.01,
@@ -316,7 +351,7 @@ if model_mode == "Strain-life (epsilon-N)":
         )
         st.caption(_format_conversion_hint(strain_to_microstrain(epsilon_f_prime), "microstrain"))
         basquin_b = st.number_input(
-            "Basquin exponent b (-)",
+            "Basquin exponent, b (-)",
             min_value=-1.0,
             max_value=-0.0001,
             value=float(defaults["basquin_b"]),
@@ -327,7 +362,7 @@ if model_mode == "Strain-life (epsilon-N)":
 
     with sc3:
         coffin_c = st.number_input(
-            "Coffin-Manson exponent c (-)",
+            "Coffin-Manson exponent, c (-)",
             min_value=-2.0,
             max_value=-0.0001,
             value=float(defaults["coffin_c"]),
@@ -336,7 +371,7 @@ if model_mode == "Strain-life (epsilon-N)":
             help="Negative exponent for plastic strain-life slope.",
         )
         total_strain_amp_percent = st.number_input(
-            "Total strain amplitude epsilon_a (%)",
+            "Total strain amplitude, epsilon_a (%)",
             min_value=0.001,
             max_value=50.0,
             value=0.30,
@@ -345,6 +380,7 @@ if model_mode == "Strain-life (epsilon-N)":
             help="Total imposed strain amplitude. Example: 0.30% equals 3000 microstrain.",
         )
         st.caption(_format_conversion_hint(total_strain_amp_percent * 10_000.0, "microstrain"))
+        st.markdown(r"Symbols: $\varepsilon_a,\ \sigma_f',\ \varepsilon_f',\ b,\ c,\ E$")
 
 st.subheader("Reliability statistics (optional)")
 enable_weibull = st.checkbox("Enable Weibull reliability estimation (with run-out censoring)", value=True)
@@ -434,7 +470,7 @@ if st.button("Estimate fatigue life", type="primary"):
             else:
                 st.success(f"Statistical estimate: B10 = {weibull_result.b10_cycles:,.0f} cycles")
                 st.caption(
-                    f"Weibull MLE with censoring: survival at {weibull_result.target_cycles:,.0f} cycles = "
+                    f"Weibull MLE with censoring: $R(N)$ at {weibull_result.target_cycles:,.0f} cycles = "
                     f"{weibull_result.survival_at_target*100:.1f}%"
                 )
 
@@ -442,20 +478,24 @@ if st.button("Estimate fatigue life", type="primary"):
         km1, km2, km3, km4 = st.columns(4)
         with km1:
             val, hint = _stress_primary_with_hint(stress_result.sigma_mean_mpa, unit_system)
-            st.metric("Mean stress sigma_m", val)
+            st.metric("Mean stress, sigma_m", val)
             st.caption(hint)
+            st.markdown(r"Symbol: $\sigma_m$")
         with km2:
             val, hint = _stress_primary_with_hint(stress_result.sigma_alt_mpa, unit_system)
-            st.metric("Alternating stress sigma_a", val)
+            st.metric("Alternating stress, sigma_a", val)
             st.caption(hint)
+            st.markdown(r"Symbol: $\sigma_a$")
         with km3:
             val, hint = _stress_primary_with_hint(stress_result.sigma_alt_goodman_mpa, unit_system)
-            st.metric("Goodman adjusted sigma_a,eq", val)
+            st.metric("Goodman-adjusted stress, sigma_a,eq", val)
             st.caption(hint)
+            st.markdown(r"Symbol: $\sigma_{a,eq}$")
         with km4:
             val, hint = _stress_primary_with_hint(stress_result.endurance_limit_mpa, unit_system)
-            st.metric("Corrected endurance limit Se", val)
+            st.metric("Corrected endurance limit, Se", val)
             st.caption(hint)
+            st.markdown(r"Symbols: $S_e,\ S_e'$")
 
         st.subheader("Engineering plots")
         stress_axis_unit = "MPa" if unit_system == "SI" else "ksi"
@@ -481,18 +521,18 @@ if st.button("Estimate fatigue life", type="primary"):
                 .mark_line()
                 .encode(
                     x=alt.X("cycles:Q", scale=alt.Scale(type="log"), title="Cycles to failure, N"),
-                    y=alt.Y("stress:Q", scale=alt.Scale(type="log"), title=f"Stress amplitude, {stress_axis_unit}"),
+                    y=alt.Y("stress:Q", scale=alt.Scale(type="log"), title=f"Stress amplitude sigma_a, {stress_axis_unit}"),
                     color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                 )
                 + alt.Chart(alt.Data(values=sn_point))
                 .mark_point(size=140, filled=True)
                 .encode(
                     x=alt.X("cycles:Q", scale=alt.Scale(type="log"), title="Cycles to failure, N"),
-                    y=alt.Y("stress:Q", scale=alt.Scale(type="log"), title=f"Stress amplitude, {stress_axis_unit}"),
+                    y=alt.Y("stress:Q", scale=alt.Scale(type="log"), title=f"Stress amplitude sigma_a, {stress_axis_unit}"),
                     color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                     tooltip=["cycles:Q", "stress:Q", "series:N"],
                 )
-            ).properties(title="Wohler S-N curve (log-log)", height=320)
+            ).properties(title="Wohler S-N curve: sigma_a vs N_f (log-log)", height=320)
             st.altair_chart(sn_chart, use_container_width=True)
             st.caption("The point above the curve indicates a short-life condition; below it indicates longer life.")
 
@@ -517,7 +557,7 @@ if st.button("Estimate fatigue life", type="primary"):
                     color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                     tooltip=["sigma_m:Q", "sigma_a:Q", "series:N"],
                 )
-            ).properties(title="Goodman diagram", height=320)
+            ).properties(title="Goodman diagram: sigma_a vs sigma_m", height=320)
             st.altair_chart(goodman_chart, use_container_width=True)
             st.caption("Points above the boundary are outside the allowable high-cycle fatigue envelope.")
 
@@ -547,7 +587,7 @@ if st.button("Estimate fatigue life", type="primary"):
                     color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                     tooltip=["cycles:Q", "strain:Q", "series:N"],
                 )
-            ).properties(title="Strain-life epsilon-N curve (log-log)", height=320)
+            ).properties(title="Strain-life curve: epsilon_a vs N_f (log-log)", height=320)
             st.altair_chart(epsilon_chart, use_container_width=True)
             st.caption("This curve blends elastic and plastic strain contributions to estimate low-to-high cycle life.")
 
@@ -562,7 +602,7 @@ if st.button("Estimate fatigue life", type="primary"):
                 st.metric("Input total strain amplitude", f"{strain_inputs.total_strain_amplitude:.5f} mm/mm")
                 st.caption(_format_conversion_hint(strain_to_microstrain(strain_inputs.total_strain_amplitude), "microstrain"))
                 val, hint = _stress_primary_with_hint(strain_result.sigma_alt_goodman_mpa, unit_system)
-                st.metric("Goodman adjusted sigma_a,eq", val)
+                st.metric("Goodman-adjusted stress, sigma_a,eq", val)
                 st.caption(hint)
             assumptions = stress_result.notes + strain_result.notes
         else:
@@ -572,14 +612,14 @@ if st.button("Estimate fatigue life", type="primary"):
             st.subheader("Statistical reliability (Weibull with censoring)")
             wr1, wr2, wr3, wr4 = st.columns(4)
             with wr1:
-                st.metric("Shape beta", f"{weibull_result.beta_shape:.3f}")
-                st.metric("Scale eta", f"{weibull_result.eta_scale_cycles:,.0f} cycles")
+                st.metric("Shape, beta", f"{weibull_result.beta_shape:.3f}")
+                st.metric("Scale life, eta", f"{weibull_result.eta_scale_cycles:,.0f} cycles")
             with wr2:
-                st.metric("B10 life", f"{weibull_result.b10_cycles:,.0f} cycles")
-                st.metric("B50 life", f"{weibull_result.b50_cycles:,.0f} cycles")
+                st.metric("B10 life, B10", f"{weibull_result.b10_cycles:,.0f} cycles")
+                st.metric("B50 life, B50", f"{weibull_result.b50_cycles:,.0f} cycles")
             with wr3:
                 st.metric(
-                    f"Survival at {weibull_result.target_cycles:,.0f}",
+                    f"Survival R(N) at {weibull_result.target_cycles:,.0f}",
                     f"{weibull_result.survival_at_target*100:.1f}%",
                 )
                 st.metric("Failed samples", f"{weibull_result.failure_count}")
@@ -616,7 +656,7 @@ if st.button("Estimate fatigue life", type="primary"):
                         y=alt.Y("weibull_y:Q", title="ln(-ln(1-F))"),
                         color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                     )
-                ).properties(title="Weibull probability plot", height=320)
+                ).properties(title="Weibull probability plot: ln(-ln(1-F)) vs ln(N)", height=320)
                 st.altair_chart(weibull_prob_chart, use_container_width=True)
                 st.caption("Linearity on Weibull coordinates indicates fit quality; triangles mark right-censored run-outs.")
 
@@ -637,23 +677,24 @@ if st.button("Estimate fatigue life", type="primary"):
                     .mark_line()
                     .encode(
                         x=alt.X("cycles:Q", scale=alt.Scale(type="log"), title="Cycles, N"),
-                        y=alt.Y("survival:Q", title="Survival probability, R(N)"),
+                        y=alt.Y("survival:Q", title="Survival probability R(N)"),
                         color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                     )
                     + alt.Chart(alt.Data(values=target_point))
                     .mark_point(size=140, filled=True)
                     .encode(
                         x=alt.X("cycles:Q", scale=alt.Scale(type="log"), title="Cycles, N"),
-                        y=alt.Y("survival:Q", title="Survival probability, R(N)"),
+                        y=alt.Y("survival:Q", title="Survival probability R(N)"),
                         color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                     )
-                ).properties(title="Weibull survival curve", height=320)
+                ).properties(title="Weibull survival curve: R(N) vs N", height=320)
                 st.altair_chart(survival_chart, use_container_width=True)
                 st.caption("Use this curve to compare reliability targets against required service-life cycles.")
 
             assumptions = assumptions + weibull_result.notes
 
         st.subheader("Assumptions and cautions")
+        st.caption(r"Notation context: $\sigma_m,\sigma_a,\sigma_{a,eq},S_e,N_f,\varepsilon_a,\beta,\eta,R(N)$")
         st.warning("Use this output for screening and part-selection guidance, then validate with detailed fatigue data.")
         for note in assumptions:
             st.write(f"- {note}")
