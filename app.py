@@ -20,6 +20,17 @@ from fatigue_model import (
     parse_weibull_observations,
     weibull_survival_probability,
 )
+from units import (
+    UnitSystem,
+    ksi_to_mpa,
+    lbfin_to_nm,
+    mpa_to_ksi,
+    mm_to_in,
+    n_to_lbf,
+    nm_to_lbfin,
+    normalize_geometry_load_inputs,
+    strain_to_microstrain,
+)
 
 
 def _logspace_10(start_exp: float, end_exp: float, points: int) -> list[float]:
@@ -29,23 +40,48 @@ def _logspace_10(start_exp: float, end_exp: float, points: int) -> list[float]:
     return [10 ** (start_exp + i * step) for i in range(points)]
 
 
-def _sn_curve_data(stress_result: object) -> list[dict[str, float | str]]:
+def _format_conversion_hint(value: float, unit: str) -> str:
+    return f"({value:,.3f} {unit})"
+
+
+def _stress_primary_with_hint(stress_mpa: float, unit_system: UnitSystem) -> tuple[str, str]:
+    if unit_system == "SI":
+        return f"{stress_mpa:.1f} MPa", _format_conversion_hint(mpa_to_ksi(stress_mpa), "ksi")
+    return f"{mpa_to_ksi(stress_mpa):.2f} ksi", _format_conversion_hint(stress_mpa, "MPa")
+
+
+def _normalize_error_for_units(message: str, unit_system: UnitSystem) -> str:
+    if unit_system == "SI":
+        return message
+    mapped = message.replace("MPa", "ksi (internally converted to MPa)")
+    mapped = mapped.replace("mm", "in (internally converted to mm)")
+    return mapped
+
+
+def _sn_curve_data(stress_result: object, unit_system: UnitSystem) -> list[dict[str, float | str]]:
     data: list[dict[str, float | str]] = []
     for n in _logspace_10(3.0, 8.0, 80):
         if n <= 1.0e6:
-            stress = stress_result.basquin_a * (n**stress_result.basquin_b)
+            stress_mpa = stress_result.basquin_a * (n**stress_result.basquin_b)
         else:
-            stress = stress_result.endurance_limit_mpa
-        data.append({"cycles": n, "stress_mpa": stress, "series": "S-N model"})
+            stress_mpa = stress_result.endurance_limit_mpa
+        stress_display = stress_mpa if unit_system == "SI" else mpa_to_ksi(stress_mpa)
+        data.append({"cycles": n, "stress": stress_display, "series": "S-N model"})
     return data
 
 
-def _goodman_data(sut_mpa: float, se_mpa: float) -> list[dict[str, float | str]]:
+def _goodman_data(sut_mpa: float, se_mpa: float, unit_system: UnitSystem) -> list[dict[str, float | str]]:
     data: list[dict[str, float | str]] = []
     for i in range(120):
         sigma_m = sut_mpa * i / 119.0
         sigma_a = se_mpa * max(1.0 - sigma_m / sut_mpa, 0.0)
-        data.append({"sigma_m_mpa": sigma_m, "sigma_a_mpa": sigma_a, "series": "Goodman boundary"})
+        if unit_system == "SI":
+            sigma_m_display = sigma_m
+            sigma_a_display = sigma_a
+        else:
+            sigma_m_display = mpa_to_ksi(sigma_m)
+            sigma_a_display = mpa_to_ksi(sigma_a)
+        data.append({"sigma_m": sigma_m_display, "sigma_a": sigma_a_display, "series": "Goodman boundary"})
     return data
 
 
@@ -107,6 +143,9 @@ st.set_page_config(page_title="Fatigue Life Estimator (v2)", layout="wide")
 st.title("Fatigue Life Estimator (v2)")
 st.caption("Quick engineering fatigue estimator for screening decisions. Results are estimates, not design certification.")
 
+unit_mode_label = st.radio("Primary input units", ["SI primary", "Imperial primary"], horizontal=True)
+unit_system: UnitSystem = "SI" if unit_mode_label == "SI primary" else "Imperial"
+
 with st.expander("Model options", expanded=False):
     st.markdown(
         """
@@ -122,43 +161,150 @@ model_mode = st.radio(
     horizontal=True,
 )
 
+if unit_system == "SI":
+    diameter_default = 12.0
+    force_mean_default = 2_000.0
+    force_alt_default = 1_000.0
+    moment_mean_default = 10.0
+    moment_alt_default = 8.0
+    diameter_unit = "mm"
+    force_unit = "N"
+    moment_unit = "N*m"
+else:
+    diameter_default = mm_to_in(12.0)
+    force_mean_default = n_to_lbf(2_000.0)
+    force_alt_default = n_to_lbf(1_000.0)
+    moment_mean_default = nm_to_lbfin(10.0)
+    moment_alt_default = nm_to_lbfin(8.0)
+    diameter_unit = "in"
+    force_unit = "lbf"
+    moment_unit = "lbf*in"
+
 col1, col2 = st.columns(2)
 with col1:
     material_name = st.selectbox("Material", list(MATERIALS.keys()), index=0)
-    diameter_mm = st.number_input("Section diameter d (mm)", min_value=0.1, value=12.0, step=0.1)
+    diameter_value = st.number_input(
+        f"Section diameter d ({diameter_unit})",
+        min_value=0.001,
+        value=float(diameter_default),
+        step=0.1 if unit_system == "SI" else 0.01,
+        help="Nominal round-section diameter used for area and bending stress calculations.",
+    )
+    if unit_system == "SI":
+        st.caption(_format_conversion_hint(mm_to_in(diameter_value), "in"))
+    else:
+        st.caption(_format_conversion_hint(diameter_value * 25.4, "mm"))
+
     surface_finish = st.selectbox("Surface finish", list(SURFACE_FINISH_COEFFICIENTS.keys()), index=1)
     reliability = st.selectbox("Reliability (%)", list(RELIABILITY_FACTOR.keys()), index=2)
     load_type = st.selectbox("Primary loading type for kc", list(LOAD_FACTOR.keys()), index=0)
-    k_misc = st.number_input("Miscellaneous Marin factor kf", min_value=0.1, max_value=1.5, value=1.0, step=0.01)
+    k_misc = st.number_input(
+        "Miscellaneous Marin factor kf",
+        min_value=0.1,
+        max_value=1.5,
+        value=1.0,
+        step=0.01,
+        help="Dimensionless correction factor for effects not explicitly modeled.",
+    )
 
 with col2:
     st.subheader("Loading inputs")
-    st.caption("Units: force in N, moment in N*mm.")
-    axial_mean = st.number_input("Mean axial force Fm (N)", min_value=0.0, value=2_000.0, step=100.0)
-    axial_alt = st.number_input("Alternating axial force amplitude Fa (N)", min_value=0.0, value=1_000.0, step=100.0)
-    moment_mean = st.number_input("Mean bending moment Mm (N*mm)", min_value=0.0, value=10_000.0, step=500.0)
-    moment_alt = st.number_input("Alternating bending moment amplitude Ma (N*mm)", min_value=0.0, value=8_000.0, step=500.0)
+    st.caption(f"Primary units: force in {force_unit}, moment in {moment_unit}.")
+    axial_mean_value = st.number_input(
+        f"Mean axial force Fm ({force_unit})",
+        min_value=0.0,
+        value=float(force_mean_default),
+        step=100.0 if unit_system == "SI" else 10.0,
+        help="Mean (steady) axial load component.",
+    )
+    if unit_system == "SI":
+        st.caption(_format_conversion_hint(n_to_lbf(axial_mean_value), "lbf"))
+    else:
+        st.caption(_format_conversion_hint(axial_mean_value * 4.4482216152605, "N"))
+
+    axial_alt_value = st.number_input(
+        f"Alternating axial force amplitude Fa ({force_unit})",
+        min_value=0.0,
+        value=float(force_alt_default),
+        step=100.0 if unit_system == "SI" else 10.0,
+        help="Alternating axial load amplitude. Use positive amplitude magnitude.",
+    )
+    if unit_system == "SI":
+        st.caption(_format_conversion_hint(n_to_lbf(axial_alt_value), "lbf"))
+    else:
+        st.caption(_format_conversion_hint(axial_alt_value * 4.4482216152605, "N"))
+
+    moment_mean_value = st.number_input(
+        f"Mean bending moment Mm ({moment_unit})",
+        min_value=0.0,
+        value=float(moment_mean_default),
+        step=0.5 if unit_system == "SI" else 5.0,
+        help="Mean bending moment component about the critical section.",
+    )
+    if unit_system == "SI":
+        st.caption(_format_conversion_hint(nm_to_lbfin(moment_mean_value), "lbf*in"))
+    else:
+        st.caption(_format_conversion_hint(lbfin_to_nm(moment_mean_value), "N*m"))
+
+    moment_alt_value = st.number_input(
+        f"Alternating bending moment amplitude Ma ({moment_unit})",
+        min_value=0.0,
+        value=float(moment_alt_default),
+        step=0.5 if unit_system == "SI" else 5.0,
+        help="Alternating bending moment amplitude. Use positive amplitude magnitude.",
+    )
+    if unit_system == "SI":
+        st.caption(_format_conversion_hint(nm_to_lbfin(moment_alt_value), "lbf*in"))
+    else:
+        st.caption(_format_conversion_hint(lbfin_to_nm(moment_alt_value), "N*m"))
+
+st.markdown("##### Input quick guide")
+g1, g2 = st.columns(2)
+with g1:
+    st.info("Geometry: `d` defines area `A = pi*d^2/4`.\n\nAxial load: `Fm` is mean, `Fa` is alternating amplitude.")
+with g2:
+    st.info("Bending: `Mm` is mean, `Ma` is alternating amplitude.\n\nUse positive amplitudes for alternating terms.")
 
 strain_inputs: StrainLifeInput | None = None
 if model_mode == "Strain-life (epsilon-N)":
     defaults = STRAIN_LIFE_DEFAULTS[material_name]
     st.subheader("Strain-life constants (Manson-Coffin-Basquin)")
+
+    if unit_system == "SI":
+        e_default = defaults["elastic_modulus_mpa"]
+        sigmaf_default = defaults["sigma_f_prime_mpa"]
+        stress_constant_unit = "MPa"
+    else:
+        e_default = mpa_to_ksi(defaults["elastic_modulus_mpa"])
+        sigmaf_default = mpa_to_ksi(defaults["sigma_f_prime_mpa"])
+        stress_constant_unit = "ksi"
+
     sc1, sc2, sc3 = st.columns(3)
     with sc1:
-        elastic_modulus_mpa = st.number_input(
-            "Elastic modulus E (MPa)",
-            min_value=1_000.0,
-            value=float(defaults["elastic_modulus_mpa"]),
-            step=1_000.0,
-            help="Typical room-temperature Young's modulus.",
-        )
-        sigma_f_prime_mpa = st.number_input(
-            "Fatigue strength coefficient sigma_f' (MPa)",
+        elastic_modulus_value = st.number_input(
+            f"Elastic modulus E ({stress_constant_unit})",
             min_value=1.0,
-            value=float(defaults["sigma_f_prime_mpa"]),
-            step=10.0,
-            help="From strain-controlled fatigue data for the selected material.",
+            value=float(e_default),
+            step=1000.0 if unit_system == "SI" else 100.0,
+            help="Young's modulus used for elastic strain term.",
         )
+        if unit_system == "SI":
+            st.caption(_format_conversion_hint(mpa_to_ksi(elastic_modulus_value), "ksi"))
+        else:
+            st.caption(_format_conversion_hint(ksi_to_mpa(elastic_modulus_value), "MPa"))
+
+        sigma_f_prime_value = st.number_input(
+            f"Fatigue strength coefficient sigma_f' ({stress_constant_unit})",
+            min_value=0.1,
+            value=float(sigmaf_default),
+            step=10.0 if unit_system == "SI" else 1.0,
+            help="Material fatigue strength coefficient from strain-controlled tests.",
+        )
+        if unit_system == "SI":
+            st.caption(_format_conversion_hint(mpa_to_ksi(sigma_f_prime_value), "ksi"))
+        else:
+            st.caption(_format_conversion_hint(ksi_to_mpa(sigma_f_prime_value), "MPa"))
+
     with sc2:
         epsilon_f_prime = st.number_input(
             "Fatigue ductility coefficient epsilon_f' (-)",
@@ -166,7 +312,9 @@ if model_mode == "Strain-life (epsilon-N)":
             value=float(defaults["epsilon_f_prime"]),
             step=0.01,
             format="%.4f",
+            help="Fatigue ductility coefficient in Manson-Coffin term.",
         )
+        st.caption(_format_conversion_hint(strain_to_microstrain(epsilon_f_prime), "microstrain"))
         basquin_b = st.number_input(
             "Basquin exponent b (-)",
             min_value=-1.0,
@@ -174,7 +322,9 @@ if model_mode == "Strain-life (epsilon-N)":
             value=float(defaults["basquin_b"]),
             step=0.005,
             format="%.4f",
+            help="Negative exponent for elastic strain-life slope.",
         )
+
     with sc3:
         coffin_c = st.number_input(
             "Coffin-Manson exponent c (-)",
@@ -183,6 +333,7 @@ if model_mode == "Strain-life (epsilon-N)":
             value=float(defaults["coffin_c"]),
             step=0.01,
             format="%.4f",
+            help="Negative exponent for plastic strain-life slope.",
         )
         total_strain_amp_percent = st.number_input(
             "Total strain amplitude epsilon_a (%)",
@@ -191,8 +342,9 @@ if model_mode == "Strain-life (epsilon-N)":
             value=0.30,
             step=0.01,
             format="%.4f",
-            help="Enter strain amplitude as percent. Example: 0.30 means 0.003 mm/mm.",
+            help="Total imposed strain amplitude. Example: 0.30% equals 3000 microstrain.",
         )
+        st.caption(_format_conversion_hint(total_strain_amp_percent * 10_000.0, "microstrain"))
 
 st.subheader("Reliability statistics (optional)")
 enable_weibull = st.checkbox("Enable Weibull reliability estimation (with run-out censoring)", value=True)
@@ -213,13 +365,22 @@ if enable_weibull:
     )
 
 if st.button("Estimate fatigue life", type="primary"):
+    normalized = normalize_geometry_load_inputs(
+        unit_system,
+        diameter_value=diameter_value,
+        axial_mean_value=axial_mean_value,
+        axial_alt_value=axial_alt_value,
+        moment_mean_value=moment_mean_value,
+        moment_alt_value=moment_alt_value,
+    )
+
     fatigue_inputs = FatigueInput(
         material=MATERIALS[material_name],
-        diameter_mm=diameter_mm,
-        axial_force_mean_n=axial_mean,
-        axial_force_alt_n=axial_alt,
-        bending_moment_mean_nmm=moment_mean,
-        bending_moment_alt_nmm=moment_alt,
+        diameter_mm=normalized["diameter_mm"],
+        axial_force_mean_n=normalized["axial_force_mean_n"],
+        axial_force_alt_n=normalized["axial_force_alt_n"],
+        bending_moment_mean_nmm=normalized["bending_moment_mean_nmm"],
+        bending_moment_alt_nmm=normalized["bending_moment_alt_nmm"],
         surface_finish=surface_finish,
         reliability_percent=reliability,
         load_type=load_type,
@@ -232,6 +393,13 @@ if st.button("Estimate fatigue life", type="primary"):
         deterministic_label = stress_result.life_label
         strain_result = None
         if model_mode == "Strain-life (epsilon-N)":
+            if unit_system == "SI":
+                elastic_modulus_mpa = elastic_modulus_value
+                sigma_f_prime_mpa = sigma_f_prime_value
+            else:
+                elastic_modulus_mpa = ksi_to_mpa(elastic_modulus_value)
+                sigma_f_prime_mpa = ksi_to_mpa(sigma_f_prime_value)
+
             strain_inputs = StrainLifeInput(
                 stress_input=fatigue_inputs,
                 elastic_modulus_mpa=elastic_modulus_mpa,
@@ -273,24 +441,38 @@ if st.button("Estimate fatigue life", type="primary"):
         st.subheader("Key metrics")
         km1, km2, km3, km4 = st.columns(4)
         with km1:
-            st.metric("Mean stress sigma_m", f"{stress_result.sigma_mean_mpa:.1f} MPa")
+            val, hint = _stress_primary_with_hint(stress_result.sigma_mean_mpa, unit_system)
+            st.metric("Mean stress sigma_m", val)
+            st.caption(hint)
         with km2:
-            st.metric("Alternating stress sigma_a", f"{stress_result.sigma_alt_mpa:.1f} MPa")
+            val, hint = _stress_primary_with_hint(stress_result.sigma_alt_mpa, unit_system)
+            st.metric("Alternating stress sigma_a", val)
+            st.caption(hint)
         with km3:
-            st.metric("Goodman adjusted sigma_a,eq", f"{stress_result.sigma_alt_goodman_mpa:.1f} MPa")
+            val, hint = _stress_primary_with_hint(stress_result.sigma_alt_goodman_mpa, unit_system)
+            st.metric("Goodman adjusted sigma_a,eq", val)
+            st.caption(hint)
         with km4:
-            st.metric("Corrected endurance limit Se", f"{stress_result.endurance_limit_mpa:.1f} MPa")
+            val, hint = _stress_primary_with_hint(stress_result.endurance_limit_mpa, unit_system)
+            st.metric("Corrected endurance limit Se", val)
+            st.caption(hint)
 
         st.subheader("Engineering plots")
+        stress_axis_unit = "MPa" if unit_system == "SI" else "ksi"
         gc1, gc2 = st.columns(2)
 
         with gc1:
-            sn_line = _sn_curve_data(stress_result)
+            sn_line = _sn_curve_data(stress_result, unit_system)
             sn_point_cycles = deterministic_estimate if deterministic_estimate is not None else 1.0e6
+            stress_point = (
+                stress_result.sigma_alt_goodman_mpa
+                if unit_system == "SI"
+                else mpa_to_ksi(stress_result.sigma_alt_goodman_mpa)
+            )
             sn_point = [
                 {
                     "cycles": max(sn_point_cycles, 1.0e3),
-                    "stress_mpa": stress_result.sigma_alt_goodman_mpa,
+                    "stress": stress_point,
                     "series": "Operating point",
                 }
             ]
@@ -299,45 +481,41 @@ if st.button("Estimate fatigue life", type="primary"):
                 .mark_line()
                 .encode(
                     x=alt.X("cycles:Q", scale=alt.Scale(type="log"), title="Cycles to failure, N"),
-                    y=alt.Y("stress_mpa:Q", scale=alt.Scale(type="log"), title="Stress amplitude, MPa"),
+                    y=alt.Y("stress:Q", scale=alt.Scale(type="log"), title=f"Stress amplitude, {stress_axis_unit}"),
                     color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                 )
                 + alt.Chart(alt.Data(values=sn_point))
                 .mark_point(size=140, filled=True)
                 .encode(
                     x=alt.X("cycles:Q", scale=alt.Scale(type="log"), title="Cycles to failure, N"),
-                    y=alt.Y("stress_mpa:Q", scale=alt.Scale(type="log"), title="Stress amplitude, MPa"),
+                    y=alt.Y("stress:Q", scale=alt.Scale(type="log"), title=f"Stress amplitude, {stress_axis_unit}"),
                     color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
-                    tooltip=["cycles:Q", "stress_mpa:Q", "series:N"],
+                    tooltip=["cycles:Q", "stress:Q", "series:N"],
                 )
             ).properties(title="Wohler S-N curve (log-log)", height=320)
             st.altair_chart(sn_chart, use_container_width=True)
             st.caption("The point above the curve indicates a short-life condition; below it indicates longer life.")
 
         with gc2:
-            goodman_line = _goodman_data(fatigue_inputs.material.sut_mpa, stress_result.endurance_limit_mpa)
-            goodman_point = [
-                {
-                    "sigma_m_mpa": stress_result.sigma_mean_mpa,
-                    "sigma_a_mpa": stress_result.sigma_alt_mpa,
-                    "series": "Operating point",
-                }
-            ]
+            goodman_line = _goodman_data(fatigue_inputs.material.sut_mpa, stress_result.endurance_limit_mpa, unit_system)
+            sigma_m_point = stress_result.sigma_mean_mpa if unit_system == "SI" else mpa_to_ksi(stress_result.sigma_mean_mpa)
+            sigma_a_point = stress_result.sigma_alt_mpa if unit_system == "SI" else mpa_to_ksi(stress_result.sigma_alt_mpa)
+            goodman_point = [{"sigma_m": sigma_m_point, "sigma_a": sigma_a_point, "series": "Operating point"}]
             goodman_chart = (
                 alt.Chart(alt.Data(values=goodman_line))
                 .mark_line()
                 .encode(
-                    x=alt.X("sigma_m_mpa:Q", title="Mean stress sigma_m (MPa)"),
-                    y=alt.Y("sigma_a_mpa:Q", title="Alternating stress sigma_a (MPa)"),
+                    x=alt.X("sigma_m:Q", title=f"Mean stress sigma_m ({stress_axis_unit})"),
+                    y=alt.Y("sigma_a:Q", title=f"Alternating stress sigma_a ({stress_axis_unit})"),
                     color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                 )
                 + alt.Chart(alt.Data(values=goodman_point))
                 .mark_point(size=140, filled=True)
                 .encode(
-                    x=alt.X("sigma_m_mpa:Q", title="Mean stress sigma_m (MPa)"),
-                    y=alt.Y("sigma_a_mpa:Q", title="Alternating stress sigma_a (MPa)"),
+                    x=alt.X("sigma_m:Q", title=f"Mean stress sigma_m ({stress_axis_unit})"),
+                    y=alt.Y("sigma_a:Q", title=f"Alternating stress sigma_a ({stress_axis_unit})"),
                     color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
-                    tooltip=["sigma_m_mpa:Q", "sigma_a_mpa:Q", "series:N"],
+                    tooltip=["sigma_m:Q", "sigma_a:Q", "series:N"],
                 )
             ).properties(title="Goodman diagram", height=320)
             st.altair_chart(goodman_chart, use_container_width=True)
@@ -377,10 +555,15 @@ if st.button("Estimate fatigue life", type="primary"):
             sd1, sd2 = st.columns(2)
             with sd1:
                 st.metric("Elastic strain component", f"{strain_result.elastic_strain_component:.5f} mm/mm")
+                st.caption(_format_conversion_hint(strain_to_microstrain(strain_result.elastic_strain_component), "microstrain"))
                 st.metric("Plastic strain component", f"{strain_result.plastic_strain_component:.5f} mm/mm")
+                st.caption(_format_conversion_hint(strain_to_microstrain(strain_result.plastic_strain_component), "microstrain"))
             with sd2:
                 st.metric("Input total strain amplitude", f"{strain_inputs.total_strain_amplitude:.5f} mm/mm")
-                st.metric("Goodman adjusted sigma_a,eq", f"{strain_result.sigma_alt_goodman_mpa:.1f} MPa")
+                st.caption(_format_conversion_hint(strain_to_microstrain(strain_inputs.total_strain_amplitude), "microstrain"))
+                val, hint = _stress_primary_with_hint(strain_result.sigma_alt_goodman_mpa, unit_system)
+                st.metric("Goodman adjusted sigma_a,eq", val)
+                st.caption(hint)
             assumptions = stress_result.notes + strain_result.notes
         else:
             assumptions = stress_result.notes
@@ -475,4 +658,4 @@ if st.button("Estimate fatigue life", type="primary"):
         for note in assumptions:
             st.write(f"- {note}")
     except ValueError as exc:
-        st.error(str(exc))
+        st.error(_normalize_error_for_units(str(exc), unit_system))
