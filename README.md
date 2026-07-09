@@ -6,72 +6,93 @@ This repository now includes a lightweight web app for quick-reference fatigue-l
 
 ## What this v2 tool does
 
-- Collects core engineering inputs: **material**, **section diameter**, **axial force**, **bending moment**, and fatigue modifiers.
+- Collects core engineering inputs: **material**, **section diameter** $d$, **axial force** $(F_m,\ F_a)$, **bending moment** $(M_m,\ M_a)$, and fatigue modifiers.
 - Supports two model paths:
   - **Stress-life (S-N)** for high-cycle screening,
-  - **Strain-life (epsilon-N)** using Manson-Coffin-Basquin style estimation.
+  - **Strain-life ($\varepsilon$-N)** using Manson-Coffin-Basquin style estimation.
 - Adds optional **statistical reliability** from fatigue test data using two-parameter Weibull MLE with right-censored run-outs.
 - Includes a **unit-system toggle** (SI primary or Imperial primary) with inline passive conversions next to inputs.
-- Uses **LaTeX-friendly scientific notation** in the UI and includes a **Nomenclature & Symbols** panel for quick symbol lookup.
-- Reports:
-  - estimated life (cycles),
-  - key intermediate values (Marin factors, endurance limits, Goodman-adjusted stress, Basquin coefficients),
-  - engineering graphs (S-N, Goodman, epsilon-N, Weibull probability, Weibull survival),
-  - assumptions and caution notes.
+- Uses rendered GitHub math and the same scientist-friendly symbols used in the app's **Nomenclature & Symbols** panel.
+- Reports estimated life $N_f$, key intermediate values, engineering graphs, and caution notes.
 
-## Implemented equations/model
+## Models and equations
 
-The estimator uses standard stress-life and strain-life workflows aligned with practical machine design methods:
+The estimator follows a compact stress-life, strain-life, and Weibull workflow aligned with practical machine-design methods.
 
-1. **Section stress (MPa)**
-   - Area: `A = pi*d^2/4`
-   - Axial stress: `sigma = F/A`
-   - Bending stress: `sigma = 32*M/(pi*d^3)`
-   - Mean and alternating nominal stress are summed from axial + bending parts.
+### Section stress from area and bending
 
-2. **Endurance limit**
-   - Rotating-beam baseline: `Se' = 0.5*Sut` (capped at 700 MPa for high Sut).
-   - Marin corrections: `Se = ka*kb*kc*kd*ke*kf*Se'`
-     - `ka`: surface finish (Shigley-style fit)
-     - `kb`: size factor from diameter
-     - `kc`: load factor (bending/axial)
-     - `kd`: temperature (fixed as 1.0 in v1)
-     - `ke`: reliability factor
-     - `kf`: user-provided miscellaneous factor
+For a solid round section:
 
-3. **Mean stress correction**
-   - Goodman: `sigma_a,eq = sigma_a / (1 - sigma_m/Sut)`
+$$
+A = \frac{\pi d^2}{4}
+$$
 
-4. **Stress-life estimation**
-   - Basquin line between:
-     - `N=1e3` at `Sf=0.9*Sut`
-     - `N=1e6` at `Sf=Se`
-   - Solve `Sf(N)=a*N^b` for `N` using `sigma_a,eq`.
+$$
+\sigma = \frac{F}{A}, \qquad \sigma_b = \frac{32M}{\pi d^3}
+$$
 
-5. **Strain-life estimation (Manson-Coffin-Basquin with Morrow correction)**
-   - `epsilon_a = ((sigma_f' - sigma_m)/E) * (2N)^b + epsilon_f' * (2N)^c`
-   - Solves for `N` from the user-specified total strain amplitude `epsilon_a`.
-   - Requires: `E`, `sigma_f'`, `epsilon_f'`, `b`, `c`.
+With mean and alternating loading, the app combines axial and bending terms as:
 
-6. **Weibull reliability estimation with censoring**
-   - Two-parameter Weibull minimum:
-     - Failure CDF: `F(N) = 1 - exp(-(N/eta)^beta)`
-     - Survival: `R(N) = exp(-(N/eta)^beta)`
-   - Uses maximum likelihood with right-censored run-outs:
-     - failures contribute Weibull PDF terms,
-     - run-outs contribute survival terms.
-   - Reliability metrics:
-     - `B10`: life at 10% cumulative failure probability,
-     - `B50`: median life,
-     - survival at user-selected target cycle count.
+$$
+\sigma_m = \frac{F_m}{A} + \frac{32 M_m}{\pi d^3}, \qquad
+\sigma_a = \frac{F_a}{A} + \frac{32 M_a}{\pi d^3}
+$$
+
+### Endurance limit
+
+The rotating-beam baseline and Marin correction path are:
+
+$$
+S_e' = 0.5 S_{ut}
+$$
+
+$$
+S_e = k_a k_b k_c k_d k_e k_f S_e'
+$$
+
+### Goodman correction
+
+$$
+\sigma_{a,eq} = \frac{\sigma_a}{1 - \sigma_m/S_{ut}}
+$$
+
+### Basquin stress-life relation
+
+The stress-life branch fits a Basquin line between $N = 10^3$ at $S_f = 0.9 S_{ut}$ and $N = 10^6$ at $S_f = S_e$, then solves:
+
+$$
+S_f(N_f) = a N_f^b, \qquad \sigma_{a,eq} = S_f(N_f)
+$$
+
+### Manson-Coffin-Basquin strain-life relation
+
+The strain-life branch uses Morrow mean-stress correction in the elastic term:
+
+$$
+\varepsilon_a = \left( \frac{\sigma_f' - \sigma_m}{E} \right) (2N_f)^b + \varepsilon_f' (2N_f)^c
+$$
+
+### Weibull reliability
+
+For two-parameter Weibull reliability:
+
+$$
+F(N) = 1 - \exp \left( - \left( \frac{N}{\eta} \right)^{\beta} \right), \qquad
+R(N) = \exp \left( - \left( \frac{N}{\eta} \right)^{\beta} \right)
+$$
+
+$$
+B_{10} = \eta \left[ -\ln(0.9) \right]^{1/\beta}, \qquad
+B_{50} = \eta \left( \ln 2 \right)^{1/\beta}
+$$
 
 ## Graphs and what they communicate
 
 - **Wohler S-N curve (log-log):** compares the operating stress point to the stress-life model line.
-- **Goodman diagram:** checks whether the current mean/alternating stress point is inside the high-cycle fatigue boundary.
-- **Strain-life epsilon-N curve (log-log):** shows the predicted life from total strain amplitude when the strain-life model is selected.
-- **Weibull probability plot:** visual fit check for Weibull trend, with run-out samples shown as censored markers.
-- **Weibull survival curve:** reliability `R(N)` vs cycles, including the selected target-cycle point.
+- **Goodman diagram:** checks whether the current $(\sigma_m,\ \sigma_a)$ point is inside the high-cycle fatigue boundary.
+- **Strain-life $\varepsilon$-N curve (log-log):** shows the predicted life from total strain amplitude $\varepsilon_a$ when the strain-life model is selected.
+- **Weibull probability plot:** visual fit check for the Weibull trend, with run-out samples shown as censored markers.
+- **Weibull survival curve:** reliability $R(N)$ vs cycles, including the selected target-cycle point.
 
 ## Weibull data input format
 
@@ -96,10 +117,26 @@ All cycles must be positive.
   - moment in N*mm,
   - stress/strength in MPa.
 
-## Nomenclature and notation
+## Nomenclature and symbols
 
-- The app includes a top-level **Nomenclature & Symbols** expander listing symbol, meaning, and units.
-- A thesis nomenclature file was not found in this repository, so the panel currently uses an app-baseline nomenclature derived from implemented stress-life, strain-life, and Weibull reliability variables.
+The app includes a top-level **Nomenclature & Symbols** expander. The README mirrors that notation here for quick reference.
+
+| Symbol | Meaning | Units |
+|---|---|---|
+| $d$ | Section diameter | mm or in |
+| $A$ | Section area | mm$^2$ |
+| $F_m,\ F_a$ | Mean and alternating axial force | N or lbf |
+| $M_m,\ M_a$ | Mean and alternating bending moment | N*m or lbf*in |
+| $\sigma_m,\ \sigma_a$ | Mean and alternating nominal stress | MPa or ksi |
+| $\sigma_{a,eq}$ | Goodman-equivalent alternating stress | MPa or ksi |
+| $S_{ut}$ | Ultimate tensile strength | MPa or ksi |
+| $S_e',\ S_e$ | Uncorrected and corrected endurance limit | MPa or ksi |
+| $N_f$ | Cycles to failure | cycles |
+| $\varepsilon_a$ | Total strain amplitude | mm/mm |
+| $\sigma_f',\ \varepsilon_f',\ b,\ c,\ E$ | Strain-life material constants | -, MPa or ksi |
+| $\beta,\ \eta$ | Weibull shape and scale parameters | -, cycles |
+| $R(N)$ | Survival probability at cycle count $N$ | 0 to 1 |
+| $B_{10},\ B_{50}$ | 10% and 50% failure-life quantiles | cycles |
 
 ## Local run
 
