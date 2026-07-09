@@ -1,21 +1,24 @@
-# Stress-Based Fatigue Analysis — Web Estimator v1
+# Stress-Based Fatigue Analysis — Web Estimator v2
 
 This repository now includes a lightweight web app for quick-reference fatigue-life estimation.
 
 **Live App:** [https://stressbasedfatigue.streamlit.app](https://stressbasedfatigue.streamlit.app)
 
-## What this v1 tool does
+## What this v2 tool does
 
 - Collects core engineering inputs: **material**, **section diameter**, **axial force**, **bending moment**, and fatigue modifiers.
-- Computes nominal stress-based fatigue response for a round section.
+- Supports two model paths:
+  - **Stress-life (S-N)** for high-cycle screening,
+  - **Strain-life (epsilon-N)** using Manson-Coffin-Basquin style estimation.
 - Reports:
   - estimated life (cycles),
   - key intermediate values (Marin factors, endurance limits, Goodman-adjusted stress, Basquin coefficients),
+  - engineering graphs (S-N, Goodman, epsilon-N),
   - assumptions and caution notes.
 
 ## Implemented equations/model
 
-The estimator uses a standard stress-life workflow aligned with practical machine design methods:
+The estimator uses standard stress-life and strain-life workflows aligned with practical machine design methods:
 
 1. **Section stress (MPa)**
    - Area: `A = pi*d^2/4`
@@ -36,11 +39,22 @@ The estimator uses a standard stress-life workflow aligned with practical machin
 3. **Mean stress correction**
    - Goodman: `sigma_a,eq = sigma_a / (1 - sigma_m/Sut)`
 
-4. **Life estimation**
+4. **Stress-life estimation**
    - Basquin line between:
      - `N=1e3` at `Sf=0.9*Sut`
      - `N=1e6` at `Sf=Se`
    - Solve `Sf(N)=a*N^b` for `N` using `sigma_a,eq`.
+
+5. **Strain-life estimation (Manson-Coffin-Basquin with Morrow correction)**
+   - `epsilon_a = ((sigma_f' - sigma_m)/E) * (2N)^b + epsilon_f' * (2N)^c`
+   - Solves for `N` from the user-specified total strain amplitude `epsilon_a`.
+   - Requires: `E`, `sigma_f'`, `epsilon_f'`, `b`, `c`.
+
+## Graphs and what they communicate
+
+- **Wohler S-N curve (log-log):** compares the operating stress point to the stress-life model line.
+- **Goodman diagram:** checks whether the current mean/alternating stress point is inside the high-cycle fatigue boundary.
+- **Strain-life epsilon-N curve (log-log):** shows the predicted life from total strain amplitude when the strain-life model is selected.
 
 ## Local run
 
@@ -73,7 +87,8 @@ For production hardening later, Render/Fly/other container-hosted options are st
 ## Assumptions and current limits
 
 - Uniaxial nominal stress approach on a solid round section.
-- No notch sensitivity, residual stress, corrosion, temperature derating, or variable-amplitude rainflow analysis.
+- Strain-life path assumes stabilized constant-amplitude cycling and Morrow mean-stress correction in the elastic term.
+- No notch sensitivity, residual stress, corrosion, temperature derating, multiaxial effects, or variable-amplitude rainflow analysis.
 - Best used for **screening and comparison**, not final design sign-off.
 
 ## Extension path (part-based defaults)

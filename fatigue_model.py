@@ -44,6 +44,36 @@ class FatigueResult:
     notes: list[str]
 
 
+@dataclass(frozen=True)
+class StressState:
+    area_mm2: float
+    sigma_mean_mpa: float
+    sigma_alt_mpa: float
+    sigma_max_mpa: float
+
+
+@dataclass(frozen=True)
+class StrainLifeInput:
+    stress_input: FatigueInput
+    elastic_modulus_mpa: float
+    sigma_f_prime_mpa: float
+    epsilon_f_prime: float
+    basquin_b: float
+    coffin_c: float
+    total_strain_amplitude: float
+
+
+@dataclass(frozen=True)
+class StrainLifeResult:
+    stress_state: StressState
+    sigma_alt_goodman_mpa: float
+    estimated_cycles: float | None
+    life_label: str
+    elastic_strain_component: float
+    plastic_strain_component: float
+    notes: list[str]
+
+
 SURFACE_FINISH_COEFFICIENTS: dict[str, tuple[float, float]] = {
     "Ground": (1.58, -0.085),
     "Machined/Cold-drawn": (4.51, -0.265),
@@ -74,6 +104,30 @@ MATERIALS: dict[str, Material] = {
     "Al 6061-T6": Material("Al 6061-T6", sut_mpa=310.0, sy_mpa=276.0),
 }
 
+STRAIN_LIFE_DEFAULTS: dict[str, dict[str, float]] = {
+    "AISI 1045 steel (normalized)": {
+        "elastic_modulus_mpa": 205_000.0,
+        "sigma_f_prime_mpa": 980.0,
+        "epsilon_f_prime": 0.47,
+        "basquin_b": -0.089,
+        "coffin_c": -0.58,
+    },
+    "AISI 4140 steel (quenched & tempered)": {
+        "elastic_modulus_mpa": 210_000.0,
+        "sigma_f_prime_mpa": 1500.0,
+        "epsilon_f_prime": 0.26,
+        "basquin_b": -0.095,
+        "coffin_c": -0.59,
+    },
+    "Al 6061-T6": {
+        "elastic_modulus_mpa": 69_000.0,
+        "sigma_f_prime_mpa": 450.0,
+        "epsilon_f_prime": 0.32,
+        "basquin_b": -0.085,
+        "coffin_c": -0.62,
+    },
+}
+
 
 def _validate_inputs(inputs: FatigueInput) -> None:
     if inputs.diameter_mm <= 0:
@@ -86,6 +140,23 @@ def _validate_inputs(inputs: FatigueInput) -> None:
         raise ValueError("Unsupported load type.")
     if inputs.miscellaneous_factor <= 0:
         raise ValueError("Miscellaneous Marin factor must be > 0.")
+
+
+def _validate_strain_inputs(inputs: StrainLifeInput) -> None:
+    if inputs.elastic_modulus_mpa <= 0:
+        raise ValueError("Elastic modulus E must be > 0 MPa.")
+    if inputs.sigma_f_prime_mpa <= 0:
+        raise ValueError("Fatigue strength coefficient sigma_f' must be > 0 MPa.")
+    if inputs.epsilon_f_prime <= 0:
+        raise ValueError("Fatigue ductility coefficient epsilon_f' must be > 0.")
+    if inputs.total_strain_amplitude <= 0:
+        raise ValueError("Total strain amplitude must be > 0 (strain, mm/mm).")
+    if inputs.total_strain_amplitude >= 1.0:
+        raise ValueError("Total strain amplitude must be < 1.0 (strain, mm/mm).")
+    if inputs.basquin_b >= 0:
+        raise ValueError("Basquin exponent b must be negative.")
+    if inputs.coffin_c >= 0:
+        raise ValueError("Coffin-Manson exponent c must be negative.")
 
 
 def _endurance_limit_prime(sut_mpa: float) -> float:
@@ -119,10 +190,8 @@ def _axial_stress_mpa(force_n: float, area_mm2: float) -> float:
     return force_n / area_mm2
 
 
-def estimate_fatigue_life(inputs: FatigueInput) -> FatigueResult:
+def evaluate_stress_state(inputs: FatigueInput) -> StressState:
     _validate_inputs(inputs)
-
-    notes: list[str] = []
     area = _section_area_mm2(inputs.diameter_mm)
     sigma_mean = _axial_stress_mpa(inputs.axial_force_mean_n, area) + _bending_stress_mpa(
         inputs.bending_moment_mean_nmm,
@@ -134,6 +203,19 @@ def estimate_fatigue_life(inputs: FatigueInput) -> FatigueResult:
     )
     sigma_mean = max(sigma_mean, 0.0)
     sigma_alt = max(sigma_alt, 0.0)
+    return StressState(
+        area_mm2=area,
+        sigma_mean_mpa=sigma_mean,
+        sigma_alt_mpa=sigma_alt,
+        sigma_max_mpa=sigma_mean + sigma_alt,
+    )
+
+
+def estimate_fatigue_life(inputs: FatigueInput) -> FatigueResult:
+    notes: list[str] = []
+    stress_state = evaluate_stress_state(inputs)
+    sigma_mean = stress_state.sigma_mean_mpa
+    sigma_alt = stress_state.sigma_alt_mpa
 
     sut = inputs.material.sut_mpa
     sy = inputs.material.sy_mpa
@@ -150,8 +232,7 @@ def estimate_fatigue_life(inputs: FatigueInput) -> FatigueResult:
     se = se_prime * ka * kb * kc * ke * inputs.miscellaneous_factor
 
     sigma_alt_goodman = sigma_alt / (1.0 - sigma_mean / sut)
-    sigma_max = sigma_mean + sigma_alt
-    if sigma_max > sy:
+    if stress_state.sigma_max_mpa > sy:
         notes.append("Peak normal stress exceeds yield strength; estimate may be non-conservative.")
 
     b = (log10(se) - log10(0.9 * sut)) / 3.0
@@ -173,7 +254,7 @@ def estimate_fatigue_life(inputs: FatigueInput) -> FatigueResult:
     notes.append("No notch sensitivity, residual stress, corrosion, or variable-amplitude loading effects are included.")
 
     return FatigueResult(
-        area_mm2=area,
+        area_mm2=stress_state.area_mm2,
         sigma_mean_mpa=sigma_mean,
         sigma_alt_mpa=sigma_alt,
         sigma_alt_goodman_mpa=sigma_alt_goodman,
@@ -187,5 +268,133 @@ def estimate_fatigue_life(inputs: FatigueInput) -> FatigueResult:
         basquin_b=b,
         estimated_cycles=estimated_cycles,
         life_label=life_label,
+        notes=notes,
+    )
+
+
+def _strain_life_value(
+    reversals: float,
+    sigma_f_prime_mpa: float,
+    elastic_modulus_mpa: float,
+    epsilon_f_prime: float,
+    basquin_b: float,
+    coffin_c: float,
+    sigma_mean_mpa: float,
+) -> tuple[float, float, float]:
+    elastic = max(sigma_f_prime_mpa - sigma_mean_mpa, 0.0) / elastic_modulus_mpa * (reversals**basquin_b)
+    plastic = epsilon_f_prime * (reversals**coffin_c)
+    return elastic + plastic, elastic, plastic
+
+
+def estimate_strain_life(inputs: StrainLifeInput) -> StrainLifeResult:
+    _validate_inputs(inputs.stress_input)
+    _validate_strain_inputs(inputs)
+
+    notes: list[str] = []
+    stress_state = evaluate_stress_state(inputs.stress_input)
+    sigma_mean = stress_state.sigma_mean_mpa
+    sigma_alt = stress_state.sigma_alt_mpa
+    sut = inputs.stress_input.material.sut_mpa
+
+    if sigma_mean >= sut:
+        raise ValueError("Mean stress is >= Sut. Goodman correction is not valid in this region.")
+    if sigma_mean >= inputs.sigma_f_prime_mpa:
+        raise ValueError("Mean stress must be below sigma_f' for Morrow-corrected strain-life.")
+
+    sigma_alt_goodman = sigma_alt / (1.0 - sigma_mean / sut)
+    target = inputs.total_strain_amplitude
+
+    lower_reversals = 1.0
+    upper_reversals = 1.0e14
+    lower_value, _, _ = _strain_life_value(
+        lower_reversals,
+        inputs.sigma_f_prime_mpa,
+        inputs.elastic_modulus_mpa,
+        inputs.epsilon_f_prime,
+        inputs.basquin_b,
+        inputs.coffin_c,
+        sigma_mean,
+    )
+    upper_value, _, _ = _strain_life_value(
+        upper_reversals,
+        inputs.sigma_f_prime_mpa,
+        inputs.elastic_modulus_mpa,
+        inputs.epsilon_f_prime,
+        inputs.basquin_b,
+        inputs.coffin_c,
+        sigma_mean,
+    )
+
+    estimated_cycles: float | None
+    life_label: str
+    if target >= lower_value:
+        estimated_cycles = 0.5
+        life_label = "Very-low-cycle regime (<= 1 cycle, high imposed strain amplitude)."
+        notes.append("Input strain amplitude exceeds the modeled value at 2N=1 reversal.")
+        _, elastic_component, plastic_component = _strain_life_value(
+            lower_reversals,
+            inputs.sigma_f_prime_mpa,
+            inputs.elastic_modulus_mpa,
+            inputs.epsilon_f_prime,
+            inputs.basquin_b,
+            inputs.coffin_c,
+            sigma_mean,
+        )
+    elif target <= upper_value:
+        estimated_cycles = None
+        life_label = "Very-high-cycle regime (beyond solver upper bound, >5e13 cycles)."
+        _, elastic_component, plastic_component = _strain_life_value(
+            upper_reversals,
+            inputs.sigma_f_prime_mpa,
+            inputs.elastic_modulus_mpa,
+            inputs.epsilon_f_prime,
+            inputs.basquin_b,
+            inputs.coffin_c,
+            sigma_mean,
+        )
+        notes.append("Predicted life exceeds the configured epsilon-N search range.")
+    else:
+        lo = lower_reversals
+        hi = upper_reversals
+        for _ in range(80):
+            mid = (lo + hi) / 2.0
+            mid_value, _, _ = _strain_life_value(
+                mid,
+                inputs.sigma_f_prime_mpa,
+                inputs.elastic_modulus_mpa,
+                inputs.epsilon_f_prime,
+                inputs.basquin_b,
+                inputs.coffin_c,
+                sigma_mean,
+            )
+            if mid_value > target:
+                lo = mid
+            else:
+                hi = mid
+
+        reversals = (lo + hi) / 2.0
+        estimated_cycles = reversals / 2.0
+        life_label = "Finite-life regime (Manson-Coffin-Basquin estimate)."
+        _, elastic_component, plastic_component = _strain_life_value(
+            reversals,
+            inputs.sigma_f_prime_mpa,
+            inputs.elastic_modulus_mpa,
+            inputs.epsilon_f_prime,
+            inputs.basquin_b,
+            inputs.coffin_c,
+            sigma_mean,
+        )
+
+    notes.append("Strain-life uses Manson-Coffin-Basquin with Morrow mean-stress correction in elastic term.")
+    notes.append("Assumes stabilized strain amplitude and constant-amplitude cycling.")
+    notes.append("No notch strain concentration, multiaxiality, or sequence effects are included.")
+
+    return StrainLifeResult(
+        stress_state=stress_state,
+        sigma_alt_goodman_mpa=sigma_alt_goodman,
+        estimated_cycles=estimated_cycles,
+        life_label=life_label,
+        elastic_strain_component=elastic_component,
+        plastic_strain_component=plastic_component,
         notes=notes,
     )
