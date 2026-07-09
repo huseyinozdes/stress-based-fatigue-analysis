@@ -1,4 +1,15 @@
-from fatigue_model import MATERIALS, FatigueInput, estimate_fatigue_life
+from dataclasses import replace
+
+from fatigue_model import (
+    MATERIALS,
+    STRAIN_LIFE_DEFAULTS,
+    FatigueInput,
+    StrainLifeInput,
+    estimate_fatigue_life,
+    estimate_strain_life,
+    estimate_weibull_life,
+    parse_weibull_observations,
+)
 
 
 def _base_input() -> FatigueInput:
@@ -27,12 +38,10 @@ def test_higher_alternating_load_reduces_life() -> None:
     base = _base_input()
     baseline = estimate_fatigue_life(base)
     worse = estimate_fatigue_life(
-        FatigueInput(
-            **{
-                **base.__dict__,
-                "axial_force_alt_n": base.axial_force_alt_n * 1.8,
-                "bending_moment_alt_nmm": base.bending_moment_alt_nmm * 1.8,
-            }
+        replace(
+            base,
+            axial_force_alt_n=base.axial_force_alt_n * 1.8,
+            bending_moment_alt_nmm=base.bending_moment_alt_nmm * 1.8,
         )
     )
 
@@ -43,15 +52,102 @@ def test_higher_alternating_load_reduces_life() -> None:
 
 
 def test_invalid_diameter_raises() -> None:
-    bad = FatigueInput(
-        **{
-            **_base_input().__dict__,
-            "diameter_mm": 0.0,
-        }
-    )
+    bad = replace(_base_input(), diameter_mm=0.0)
     try:
         estimate_fatigue_life(bad)
     except ValueError as exc:
         assert "Diameter" in str(exc)
     else:
         raise AssertionError("Expected ValueError for invalid diameter")
+
+
+def _strain_input() -> StrainLifeInput:
+    base = _base_input()
+    defaults = STRAIN_LIFE_DEFAULTS[base.material.name]
+    return StrainLifeInput(
+        stress_input=base,
+        elastic_modulus_mpa=defaults["elastic_modulus_mpa"],
+        sigma_f_prime_mpa=defaults["sigma_f_prime_mpa"],
+        epsilon_f_prime=defaults["epsilon_f_prime"],
+        basquin_b=defaults["basquin_b"],
+        coffin_c=defaults["coffin_c"],
+        total_strain_amplitude=0.003,
+    )
+
+
+def test_strain_life_estimate_returns_positive_cycles_or_upper_regime() -> None:
+    result = estimate_strain_life(_strain_input())
+    assert result.sigma_alt_goodman_mpa > 0
+    assert result.life_label
+    if result.estimated_cycles is not None:
+        assert result.estimated_cycles > 0
+
+
+def test_higher_strain_amplitude_reduces_strain_life() -> None:
+    base = _strain_input()
+    baseline = estimate_strain_life(base)
+    worse = estimate_strain_life(replace(base, total_strain_amplitude=base.total_strain_amplitude * 1.4))
+    if baseline.estimated_cycles is not None and worse.estimated_cycles is not None:
+        assert worse.estimated_cycles < baseline.estimated_cycles
+
+
+def test_invalid_strain_constants_raise() -> None:
+    bad = replace(_strain_input(), basquin_b=0.01)
+    try:
+        estimate_strain_life(bad)
+    except ValueError as exc:
+        assert "Basquin exponent b" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for invalid strain-life constants")
+
+
+def _weibull_observations():
+    return parse_weibull_observations(
+        "\n".join(
+            [
+                "25000, fail",
+                "32000, fail",
+                "41000, fail",
+                "58000, fail",
+                "70000, runout",
+                "90000, runout",
+            ]
+        )
+    )
+
+
+def test_weibull_with_censoring_returns_sane_metrics() -> None:
+    result = estimate_weibull_life(_weibull_observations(), target_cycles=60000.0)
+    assert result.beta_shape > 0
+    assert result.eta_scale_cycles > 0
+    assert result.b10_cycles > 0
+    assert result.b50_cycles > result.b10_cycles
+    assert 0 < result.survival_at_target < 1
+    assert result.failure_count == 4
+    assert result.censored_count == 2
+
+
+def test_weibull_survival_drops_with_higher_cycles() -> None:
+    observations = _weibull_observations()
+    low_target = estimate_weibull_life(observations, target_cycles=40_000.0)
+    high_target = estimate_weibull_life(observations, target_cycles=120_000.0)
+    assert high_target.survival_at_target < low_target.survival_at_target
+
+
+def test_weibull_requires_enough_failures() -> None:
+    weak_data = parse_weibull_observations(
+        "\n".join(
+            [
+                "40000, fail",
+                "70000, runout",
+                "90000, runout",
+                "110000, runout",
+            ]
+        )
+    )
+    try:
+        estimate_weibull_life(weak_data, target_cycles=80_000.0)
+    except ValueError as exc:
+        assert "At least 2 failed observations" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for insufficient failed observations")
