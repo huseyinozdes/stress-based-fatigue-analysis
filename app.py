@@ -31,6 +31,7 @@ from units import (
     normalize_geometry_load_inputs,
     strain_to_microstrain,
 )
+from project_version import PROJECT_VERSION
 
 
 def _logspace_10(start_exp: float, end_exp: float, points: int) -> list[float]:
@@ -165,8 +166,8 @@ def _render_nomenclature() -> None:
     st.markdown(header + body)
 
 
-st.set_page_config(page_title="Fatigue Life Estimator (v2)", layout="wide")
-st.title("Fatigue Life Estimator (v2)")
+st.set_page_config(page_title=f"Fatigue Life Estimator (v{PROJECT_VERSION})", layout="wide")
+st.title(f"Fatigue Life Estimator (v{PROJECT_VERSION})")
 st.caption("Quick engineering fatigue estimator for screening decisions. Results are estimates, not design certification.")
 
 unit_mode_label = st.radio("Primary input units", ["SI primary", "Imperial primary"], horizontal=True)
