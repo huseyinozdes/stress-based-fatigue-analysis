@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import log10, pi
+from math import exp, isfinite, log, log10, pi
+import re
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,26 @@ class StrainLifeResult:
     life_label: str
     elastic_strain_component: float
     plastic_strain_component: float
+    notes: list[str]
+
+
+@dataclass(frozen=True)
+class WeibullObservation:
+    cycles: float
+    failed: bool
+
+
+@dataclass(frozen=True)
+class WeibullResult:
+    beta_shape: float
+    eta_scale_cycles: float
+    b10_cycles: float
+    b50_cycles: float
+    survival_at_target: float
+    target_cycles: float
+    sample_count: int
+    failure_count: int
+    censored_count: int
     notes: list[str]
 
 
@@ -396,5 +417,169 @@ def estimate_strain_life(inputs: StrainLifeInput) -> StrainLifeResult:
         life_label=life_label,
         elastic_strain_component=elastic_component,
         plastic_strain_component=plastic_component,
+        notes=notes,
+    )
+
+
+_FAIL_TOKENS = {"f", "fail", "failed", "failure", "1"}
+_RUNOUT_TOKENS = {"r", "runout", "run-out", "c", "censored", "survived", "s", "0"}
+
+
+def parse_weibull_observations(text: str) -> list[WeibullObservation]:
+    observations: list[WeibullObservation] = []
+    lines = text.splitlines()
+    for idx, raw_line in enumerate(lines, start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        tokens = [t for t in re.split(r"[,;\t ]+", line) if t]
+        if len(tokens) < 2:
+            raise ValueError(f"Line {idx}: expected '<cycles> <status>'.")
+        try:
+            cycles = float(tokens[0])
+        except ValueError as exc:
+            raise ValueError(f"Line {idx}: invalid cycle count '{tokens[0]}'.") from exc
+        if cycles <= 0:
+            raise ValueError(f"Line {idx}: cycles must be > 0.")
+
+        status = tokens[1].lower()
+        if status in _FAIL_TOKENS:
+            failed = True
+        elif status in _RUNOUT_TOKENS:
+            failed = False
+        else:
+            raise ValueError(
+                f"Line {idx}: status '{tokens[1]}' must be fail/failed/f or runout/censored/r."
+            )
+        observations.append(WeibullObservation(cycles=cycles, failed=failed))
+
+    if not observations:
+        raise ValueError("No Weibull observations provided.")
+    return observations
+
+
+def _validate_weibull_observations(observations: list[WeibullObservation]) -> None:
+    if len(observations) < 3:
+        raise ValueError("At least 3 observations are required for Weibull fitting.")
+    failures = [obs for obs in observations if obs.failed]
+    if len(failures) < 2:
+        raise ValueError("At least 2 failed observations are required for two-parameter Weibull fitting.")
+    if any(obs.cycles <= 0 for obs in observations):
+        raise ValueError("All Weibull cycles must be > 0.")
+
+
+def _safe_log_sum_exp(beta: float, cycles_values: list[float]) -> float:
+    ln_cycles = [log(c) for c in cycles_values]
+    max_ln = max(ln_cycles)
+    scaled_sum = sum(exp(beta * (ln_c - max_ln)) for ln_c in ln_cycles)
+    return beta * max_ln + log(scaled_sum)
+
+
+def _weibull_profile_log_likelihood(beta: float, failures: list[float], all_cycles: list[float]) -> float:
+    if beta <= 0 or not isfinite(beta):
+        return float("-inf")
+    r = len(failures)
+    sum_fail_ln = sum(log(x) for x in failures)
+    ln_a = _safe_log_sum_exp(beta, all_cycles)
+    ln_r = log(r)
+    # Profile log-likelihood after substituting eta^beta = A/r where A = sum(t_i^beta) over all (failed + censored).
+    return r * log(beta) - r * (ln_a - ln_r) + (beta - 1.0) * sum_fail_ln - r
+
+
+def _estimate_weibull_beta(failures: list[float], all_cycles: list[float]) -> float:
+    lo = 0.2
+    hi = 20.0
+    gr = (5**0.5 - 1.0) / 2.0
+
+    c = hi - gr * (hi - lo)
+    d = lo + gr * (hi - lo)
+    fc = _weibull_profile_log_likelihood(c, failures, all_cycles)
+    fd = _weibull_profile_log_likelihood(d, failures, all_cycles)
+
+    for _ in range(120):
+        if fc > fd:
+            hi = d
+            d = c
+            fd = fc
+            c = hi - gr * (hi - lo)
+            fc = _weibull_profile_log_likelihood(c, failures, all_cycles)
+        else:
+            lo = c
+            c = d
+            fc = fd
+            d = lo + gr * (hi - lo)
+            fd = _weibull_profile_log_likelihood(d, failures, all_cycles)
+
+    beta = (lo + hi) / 2.0
+    if beta <= 0 or not isfinite(beta):
+        raise ValueError("Weibull MLE did not converge to a valid beta.")
+    if beta < 0.201 or beta > 19.99:
+        raise ValueError("Weibull MLE reached parameter bounds; data may be insufficient or ill-conditioned.")
+    return beta
+
+
+def _weibull_eta(beta: float, failures: list[float], all_cycles: list[float]) -> float:
+    r = len(failures)
+    ln_a = _safe_log_sum_exp(beta, all_cycles)
+    ln_eta = (ln_a - log(r)) / beta
+    eta = exp(ln_eta)
+    if eta <= 0 or not isfinite(eta):
+        raise ValueError("Weibull MLE did not converge to a valid eta.")
+    return eta
+
+
+def weibull_survival_probability(cycles: float, beta_shape: float, eta_scale_cycles: float) -> float:
+    if cycles < 0:
+        raise ValueError("Cycles must be >= 0.")
+    if beta_shape <= 0 or eta_scale_cycles <= 0:
+        raise ValueError("Invalid Weibull parameters.")
+    if cycles == 0:
+        return 1.0
+    exponent = (cycles / eta_scale_cycles) ** beta_shape
+    return exp(-exponent)
+
+
+def weibull_quantile_cycles(unreliability: float, beta_shape: float, eta_scale_cycles: float) -> float:
+    if not (0 < unreliability < 1):
+        raise ValueError("Unreliability must be between 0 and 1.")
+    if beta_shape <= 0 or eta_scale_cycles <= 0:
+        raise ValueError("Invalid Weibull parameters.")
+    return eta_scale_cycles * ((-log(1.0 - unreliability)) ** (1.0 / beta_shape))
+
+
+def estimate_weibull_life(
+    observations: list[WeibullObservation],
+    target_cycles: float,
+) -> WeibullResult:
+    _validate_weibull_observations(observations)
+    if target_cycles <= 0:
+        raise ValueError("Target cycles must be > 0.")
+
+    failures = [obs.cycles for obs in observations if obs.failed]
+    all_cycles = [obs.cycles for obs in observations]
+    beta = _estimate_weibull_beta(failures, all_cycles)
+    eta = _weibull_eta(beta, failures, all_cycles)
+
+    b10 = weibull_quantile_cycles(0.10, beta, eta)
+    b50 = weibull_quantile_cycles(0.50, beta, eta)
+    survival = weibull_survival_probability(target_cycles, beta, eta)
+
+    notes: list[str] = []
+    if len(observations) < 8 or len(failures) < 3:
+        notes.append("Small sample caution: Weibull parameters may carry high statistical uncertainty.")
+    if len(failures) <= len(observations) // 2:
+        notes.append("High run-out fraction: fit is sensitive to censoring assumptions and test truncation levels.")
+    notes.append("Model uses two-parameter Weibull minimum with right-censored MLE (no location/threshold parameter).")
+
+    return WeibullResult(
+        beta_shape=beta,
+        eta_scale_cycles=eta,
+        b10_cycles=b10,
+        b50_cycles=b50,
+        survival_at_target=survival,
+        target_cycles=target_cycles,
+        sample_count=len(observations),
+        failure_count=len(failures),
+        censored_count=len(observations) - len(failures),
         notes=notes,
     )

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from math import log
+
 import altair as alt
 import streamlit as st
 
@@ -11,8 +13,12 @@ from fatigue_model import (
     SURFACE_FINISH_COEFFICIENTS,
     FatigueInput,
     StrainLifeInput,
+    WeibullObservation,
     estimate_fatigue_life,
     estimate_strain_life,
+    estimate_weibull_life,
+    parse_weibull_observations,
+    weibull_survival_probability,
 )
 
 
@@ -56,6 +62,47 @@ def _epsilon_n_data(strain_inputs: StrainLifeInput, sigma_mean_mpa: float) -> li
     return data
 
 
+def _weibull_probability_data(
+    observations: list[WeibullObservation],
+    beta_shape: float,
+    eta_scale_cycles: float,
+) -> tuple[list[dict[str, float | str]], list[dict[str, float | str]], list[dict[str, float | str]]]:
+    model_line: list[dict[str, float | str]] = []
+    for n in _logspace_10(3.0, 8.0, 100):
+        failure_probability = 1.0 - weibull_survival_probability(n, beta_shape, eta_scale_cycles)
+        y_weibull = log(-log(1.0 - min(max(failure_probability, 1e-6), 1.0 - 1e-6)))
+        model_line.append({"ln_cycles": log(n), "weibull_y": y_weibull, "series": "Fitted Weibull"})
+
+    failures = sorted(obs.cycles for obs in observations if obs.failed)
+    failure_points: list[dict[str, float | str]] = []
+    runout_points: list[dict[str, float | str]] = []
+
+    for idx, cycles in enumerate(failures, start=1):
+        plotting_f = (idx - 0.3) / (len(failures) + 0.4)
+        y_weibull = log(-log(1.0 - min(max(plotting_f, 1e-6), 1.0 - 1e-6)))
+        failure_points.append({"ln_cycles": log(cycles), "weibull_y": y_weibull, "series": "Failed data"})
+
+    y_runout = min((row["weibull_y"] for row in model_line), default=-4.0) - 0.4
+    for obs in observations:
+        if not obs.failed:
+            runout_points.append({"ln_cycles": log(obs.cycles), "weibull_y": y_runout, "series": "Run-out (censored)"})
+
+    return model_line, failure_points, runout_points
+
+
+def _weibull_survival_curve_data(beta_shape: float, eta_scale_cycles: float) -> list[dict[str, float | str]]:
+    data: list[dict[str, float | str]] = []
+    for n in _logspace_10(3.0, 8.0, 100):
+        data.append(
+            {
+                "cycles": n,
+                "survival": weibull_survival_probability(n, beta_shape, eta_scale_cycles),
+                "series": "Reliability curve",
+            }
+        )
+    return data
+
+
 st.set_page_config(page_title="Fatigue Life Estimator (v2)", layout="wide")
 st.title("Fatigue Life Estimator (v2)")
 st.caption("Quick engineering fatigue estimator for screening decisions. Results are estimates, not design certification.")
@@ -65,11 +112,12 @@ with st.expander("Model options", expanded=False):
         """
         - **Stress-life (S-N):** Basquin + Marin factors + Goodman correction
         - **Strain-life (epsilon-N):** Manson-Coffin-Basquin with Morrow mean-stress correction
+        - **Reliability statistics:** two-parameter Weibull with right-censored run-out handling
         """
     )
 
 model_mode = st.radio(
-    "Select estimation model",
+    "Select deterministic model",
     ["Stress-life (S-N)", "Strain-life (epsilon-N)"],
     horizontal=True,
 )
@@ -146,6 +194,24 @@ if model_mode == "Strain-life (epsilon-N)":
             help="Enter strain amplitude as percent. Example: 0.30 means 0.003 mm/mm.",
         )
 
+st.subheader("Reliability statistics (optional)")
+enable_weibull = st.checkbox("Enable Weibull reliability estimation (with run-out censoring)", value=True)
+weibull_data_text = ""
+target_cycles_reliability = 100_000.0
+if enable_weibull:
+    st.caption("Enter one sample per line: '<cycles>, <status>' where status is fail/failed/f or runout/censored/r.")
+    weibull_data_text = st.text_area(
+        "Fatigue test data",
+        value="25000, fail\n40000, fail\n60000, fail\n85000, runout\n120000, runout",
+        height=120,
+    )
+    target_cycles_reliability = st.number_input(
+        "Target cycles for survival probability",
+        min_value=1.0,
+        value=100_000.0,
+        step=10_000.0,
+    )
+
 if st.button("Estimate fatigue life", type="primary"):
     fatigue_inputs = FatigueInput(
         material=MATERIALS[material_name],
@@ -162,6 +228,9 @@ if st.button("Estimate fatigue life", type="primary"):
 
     try:
         stress_result = estimate_fatigue_life(fatigue_inputs)
+        deterministic_estimate: float | None = stress_result.estimated_cycles
+        deterministic_label = stress_result.life_label
+        strain_result = None
         if model_mode == "Strain-life (epsilon-N)":
             strain_inputs = StrainLifeInput(
                 stress_input=fatigue_inputs,
@@ -173,22 +242,33 @@ if st.button("Estimate fatigue life", type="primary"):
                 total_strain_amplitude=total_strain_amp_percent / 100.0,
             )
             strain_result = estimate_strain_life(strain_inputs)
+            deterministic_estimate = strain_result.estimated_cycles
+            deterministic_label = strain_result.life_label
+
+        weibull_result = None
+        weibull_observations: list[WeibullObservation] = []
+        if enable_weibull:
+            weibull_observations = parse_weibull_observations(weibull_data_text)
+            weibull_result = estimate_weibull_life(weibull_observations, target_cycles_reliability)
 
         st.subheader("Verdict")
-        if model_mode == "Stress-life (S-N)":
-            if stress_result.estimated_cycles is None:
-                headline = "Estimated life: >= 1e6 cycles"
+        vc1, vc2 = st.columns(2)
+        with vc1:
+            if deterministic_estimate is None:
+                st.success("Deterministic estimate: high/very-high cycle regime")
             else:
-                headline = f"Estimated life: {stress_result.estimated_cycles:,.0f} cycles"
-            st.success(headline)
-            st.caption(stress_result.life_label)
-        else:
-            if strain_result.estimated_cycles is None:
-                headline = "Estimated life: beyond epsilon-N solver upper range"
+                st.success(f"Deterministic estimate: {deterministic_estimate:,.0f} cycles")
+            st.caption(f"Deterministic model verdict: {deterministic_label}")
+        with vc2:
+            if weibull_result is None:
+                st.info("Statistical estimate: not enabled")
+                st.caption("Enable Weibull section to estimate B-life and reliability from test data.")
             else:
-                headline = f"Estimated life: {strain_result.estimated_cycles:,.0f} cycles"
-            st.success(headline)
-            st.caption(strain_result.life_label)
+                st.success(f"Statistical estimate: B10 = {weibull_result.b10_cycles:,.0f} cycles")
+                st.caption(
+                    f"Weibull MLE with censoring: survival at {weibull_result.target_cycles:,.0f} cycles = "
+                    f"{weibull_result.survival_at_target*100:.1f}%"
+                )
 
         st.subheader("Key metrics")
         km1, km2, km3, km4 = st.columns(4)
@@ -206,7 +286,7 @@ if st.button("Estimate fatigue life", type="primary"):
 
         with gc1:
             sn_line = _sn_curve_data(stress_result)
-            sn_point_cycles = stress_result.estimated_cycles if stress_result.estimated_cycles is not None else 1.0e6
+            sn_point_cycles = deterministic_estimate if deterministic_estimate is not None else 1.0e6
             sn_point = [
                 {
                     "cycles": max(sn_point_cycles, 1.0e3),
@@ -263,7 +343,7 @@ if st.button("Estimate fatigue life", type="primary"):
             st.altair_chart(goodman_chart, use_container_width=True)
             st.caption("Points above the boundary are outside the allowable high-cycle fatigue envelope.")
 
-        if model_mode == "Strain-life (epsilon-N)" and strain_inputs is not None:
+        if model_mode == "Strain-life (epsilon-N)" and strain_inputs is not None and strain_result is not None:
             epsilon_line = _epsilon_n_data(strain_inputs, strain_result.stress_state.sigma_mean_mpa)
             epsilon_point_cycles = strain_result.estimated_cycles if strain_result.estimated_cycles is not None else 1.0e8
             epsilon_point = [
@@ -301,10 +381,94 @@ if st.button("Estimate fatigue life", type="primary"):
             with sd2:
                 st.metric("Input total strain amplitude", f"{strain_inputs.total_strain_amplitude:.5f} mm/mm")
                 st.metric("Goodman adjusted sigma_a,eq", f"{strain_result.sigma_alt_goodman_mpa:.1f} MPa")
-
             assumptions = stress_result.notes + strain_result.notes
         else:
             assumptions = stress_result.notes
+
+        if weibull_result is not None:
+            st.subheader("Statistical reliability (Weibull with censoring)")
+            wr1, wr2, wr3, wr4 = st.columns(4)
+            with wr1:
+                st.metric("Shape beta", f"{weibull_result.beta_shape:.3f}")
+                st.metric("Scale eta", f"{weibull_result.eta_scale_cycles:,.0f} cycles")
+            with wr2:
+                st.metric("B10 life", f"{weibull_result.b10_cycles:,.0f} cycles")
+                st.metric("B50 life", f"{weibull_result.b50_cycles:,.0f} cycles")
+            with wr3:
+                st.metric(
+                    f"Survival at {weibull_result.target_cycles:,.0f}",
+                    f"{weibull_result.survival_at_target*100:.1f}%",
+                )
+                st.metric("Failed samples", f"{weibull_result.failure_count}")
+            with wr4:
+                st.metric("Censored run-outs", f"{weibull_result.censored_count}")
+                st.metric("Total samples", f"{weibull_result.sample_count}")
+
+            wp1, wp2 = st.columns(2)
+            with wp1:
+                model_line, failure_points, runout_points = _weibull_probability_data(
+                    weibull_observations,
+                    weibull_result.beta_shape,
+                    weibull_result.eta_scale_cycles,
+                )
+                weibull_prob_chart = (
+                    alt.Chart(alt.Data(values=model_line))
+                    .mark_line()
+                    .encode(
+                        x=alt.X("ln_cycles:Q", title="ln(cycles), ln(N)"),
+                        y=alt.Y("weibull_y:Q", title="ln(-ln(1-F))"),
+                        color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
+                    )
+                    + alt.Chart(alt.Data(values=failure_points))
+                    .mark_point(size=100, filled=True)
+                    .encode(
+                        x=alt.X("ln_cycles:Q", title="ln(cycles), ln(N)"),
+                        y=alt.Y("weibull_y:Q", title="ln(-ln(1-F))"),
+                        color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
+                    )
+                    + alt.Chart(alt.Data(values=runout_points))
+                    .mark_point(size=90, shape="triangle")
+                    .encode(
+                        x=alt.X("ln_cycles:Q", title="ln(cycles), ln(N)"),
+                        y=alt.Y("weibull_y:Q", title="ln(-ln(1-F))"),
+                        color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
+                    )
+                ).properties(title="Weibull probability plot", height=320)
+                st.altair_chart(weibull_prob_chart, use_container_width=True)
+                st.caption("Linearity on Weibull coordinates indicates fit quality; triangles mark right-censored run-outs.")
+
+            with wp2:
+                survival_line = _weibull_survival_curve_data(
+                    weibull_result.beta_shape,
+                    weibull_result.eta_scale_cycles,
+                )
+                target_point = [
+                    {
+                        "cycles": weibull_result.target_cycles,
+                        "survival": weibull_result.survival_at_target,
+                        "series": "Target point",
+                    }
+                ]
+                survival_chart = (
+                    alt.Chart(alt.Data(values=survival_line))
+                    .mark_line()
+                    .encode(
+                        x=alt.X("cycles:Q", scale=alt.Scale(type="log"), title="Cycles, N"),
+                        y=alt.Y("survival:Q", title="Survival probability, R(N)"),
+                        color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
+                    )
+                    + alt.Chart(alt.Data(values=target_point))
+                    .mark_point(size=140, filled=True)
+                    .encode(
+                        x=alt.X("cycles:Q", scale=alt.Scale(type="log"), title="Cycles, N"),
+                        y=alt.Y("survival:Q", title="Survival probability, R(N)"),
+                        color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
+                    )
+                ).properties(title="Weibull survival curve", height=320)
+                st.altair_chart(survival_chart, use_container_width=True)
+                st.caption("Use this curve to compare reliability targets against required service-life cycles.")
+
+            assumptions = assumptions + weibull_result.notes
 
         st.subheader("Assumptions and cautions")
         st.warning("Use this output for screening and part-selection guidance, then validate with detailed fatigue data.")

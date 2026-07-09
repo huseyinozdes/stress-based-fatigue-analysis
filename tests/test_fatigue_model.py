@@ -7,6 +7,8 @@ from fatigue_model import (
     StrainLifeInput,
     estimate_fatigue_life,
     estimate_strain_life,
+    estimate_weibull_life,
+    parse_weibull_observations,
 )
 
 
@@ -97,3 +99,55 @@ def test_invalid_strain_constants_raise() -> None:
         assert "Basquin exponent b" in str(exc)
     else:
         raise AssertionError("Expected ValueError for invalid strain-life constants")
+
+
+def _weibull_observations():
+    return parse_weibull_observations(
+        "\n".join(
+            [
+                "25000, fail",
+                "32000, fail",
+                "41000, fail",
+                "58000, fail",
+                "70000, runout",
+                "90000, runout",
+            ]
+        )
+    )
+
+
+def test_weibull_with_censoring_returns_sane_metrics() -> None:
+    result = estimate_weibull_life(_weibull_observations(), target_cycles=60000.0)
+    assert result.beta_shape > 0
+    assert result.eta_scale_cycles > 0
+    assert result.b10_cycles > 0
+    assert result.b50_cycles > result.b10_cycles
+    assert 0 < result.survival_at_target < 1
+    assert result.failure_count == 4
+    assert result.censored_count == 2
+
+
+def test_weibull_survival_drops_with_higher_cycles() -> None:
+    observations = _weibull_observations()
+    low_target = estimate_weibull_life(observations, target_cycles=40_000.0)
+    high_target = estimate_weibull_life(observations, target_cycles=120_000.0)
+    assert high_target.survival_at_target < low_target.survival_at_target
+
+
+def test_weibull_requires_enough_failures() -> None:
+    weak_data = parse_weibull_observations(
+        "\n".join(
+            [
+                "40000, fail",
+                "70000, runout",
+                "90000, runout",
+                "110000, runout",
+            ]
+        )
+    )
+    try:
+        estimate_weibull_life(weak_data, target_cycles=80_000.0)
+    except ValueError as exc:
+        assert "At least 2 failed observations" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for insufficient failed observations")

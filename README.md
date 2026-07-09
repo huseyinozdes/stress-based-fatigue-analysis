@@ -10,10 +10,11 @@ This repository now includes a lightweight web app for quick-reference fatigue-l
 - Supports two model paths:
   - **Stress-life (S-N)** for high-cycle screening,
   - **Strain-life (epsilon-N)** using Manson-Coffin-Basquin style estimation.
+- Adds optional **statistical reliability** from fatigue test data using two-parameter Weibull MLE with right-censored run-outs.
 - Reports:
   - estimated life (cycles),
   - key intermediate values (Marin factors, endurance limits, Goodman-adjusted stress, Basquin coefficients),
-  - engineering graphs (S-N, Goodman, epsilon-N),
+  - engineering graphs (S-N, Goodman, epsilon-N, Weibull probability, Weibull survival),
   - assumptions and caution notes.
 
 ## Implemented equations/model
@@ -50,11 +51,38 @@ The estimator uses standard stress-life and strain-life workflows aligned with p
    - Solves for `N` from the user-specified total strain amplitude `epsilon_a`.
    - Requires: `E`, `sigma_f'`, `epsilon_f'`, `b`, `c`.
 
+6. **Weibull reliability estimation with censoring**
+   - Two-parameter Weibull minimum:
+     - Failure CDF: `F(N) = 1 - exp(-(N/eta)^beta)`
+     - Survival: `R(N) = exp(-(N/eta)^beta)`
+   - Uses maximum likelihood with right-censored run-outs:
+     - failures contribute Weibull PDF terms,
+     - run-outs contribute survival terms.
+   - Reliability metrics:
+     - `B10`: life at 10% cumulative failure probability,
+     - `B50`: median life,
+     - survival at user-selected target cycle count.
+
 ## Graphs and what they communicate
 
 - **Wohler S-N curve (log-log):** compares the operating stress point to the stress-life model line.
 - **Goodman diagram:** checks whether the current mean/alternating stress point is inside the high-cycle fatigue boundary.
 - **Strain-life epsilon-N curve (log-log):** shows the predicted life from total strain amplitude when the strain-life model is selected.
+- **Weibull probability plot:** visual fit check for Weibull trend, with run-out samples shown as censored markers.
+- **Weibull survival curve:** reliability `R(N)` vs cycles, including the selected target-cycle point.
+
+## Weibull data input format
+
+In the app's reliability section, enter one sample per line:
+
+- `25000, fail`
+- `80000, runout`
+
+Accepted status tokens:
+- failure: `fail`, `failed`, `f`
+- right-censored run-out: `runout`, `censored`, `r`
+
+All cycles must be positive.
 
 ## Local run
 
@@ -88,6 +116,7 @@ For production hardening later, Render/Fly/other container-hosted options are st
 
 - Uniaxial nominal stress approach on a solid round section.
 - Strain-life path assumes stabilized constant-amplitude cycling and Morrow mean-stress correction in the elastic term.
+- Weibull path assumes a two-parameter Weibull distribution and non-informative right-censoring.
 - No notch sensitivity, residual stress, corrosion, temperature derating, multiaxial effects, or variable-amplitude rainflow analysis.
 - Best used for **screening and comparison**, not final design sign-off.
 
