@@ -209,7 +209,7 @@ def _render_materials_selection_scaffold() -> None:
             for candidate in selection.ranked_candidates
         ]
         st.markdown("**Scaffold ranking output (deterministic baseline scoring)**")
-        st.dataframe(candidate_rows, use_container_width=True)
+        st.dataframe(candidate_rows, width="stretch")
 
         point_rows = [
             {
@@ -221,7 +221,7 @@ def _render_materials_selection_scaffold() -> None:
             for point in ashby_payload.points
         ]
         st.markdown(f"**Ashby payload preview: {ashby_payload.x_axis.label} vs {ashby_payload.y_axis.label}**")
-        st.dataframe(point_rows, use_container_width=True)
+        st.dataframe(point_rows, width="stretch")
         dropped_points = get_payload_dropped_points(ashby_payload)
         if dropped_points:
             dropped_rows = [
@@ -233,7 +233,7 @@ def _render_materials_selection_scaffold() -> None:
                 for dropped in dropped_points
             ]
             st.markdown("**Dropped points metadata**")
-            st.dataframe(dropped_rows, use_container_width=True)
+            st.dataframe(dropped_rows, width="stretch")
 
         st.markdown("**Pending calibration TODOs**")
         for todo in selection.unresolved_todos:
@@ -610,7 +610,7 @@ if st.button("Estimate fatigue life", type="primary"):
                     tooltip=["cycles:Q", "stress:Q", "series:N"],
                 )
             ).properties(title="Wohler S-N curve: sigma_a vs N_f (log-log)", height=320)
-            st.altair_chart(sn_chart, use_container_width=True)
+            st.altair_chart(sn_chart, width="stretch")
             st.caption("The point above the curve indicates a short-life condition; below it indicates longer life.")
 
         with gc2:
@@ -635,7 +635,7 @@ if st.button("Estimate fatigue life", type="primary"):
                     tooltip=["sigma_m:Q", "sigma_a:Q", "series:N"],
                 )
             ).properties(title="Goodman diagram: sigma_a vs sigma_m", height=320)
-            st.altair_chart(goodman_chart, use_container_width=True)
+            st.altair_chart(goodman_chart, width="stretch")
             st.caption("Points above the boundary are outside the allowable high-cycle fatigue envelope.")
 
         if model_mode == "Strain-life (epsilon-N)" and strain_inputs is not None and strain_result is not None:
@@ -665,7 +665,7 @@ if st.button("Estimate fatigue life", type="primary"):
                     tooltip=["cycles:Q", "strain:Q", "series:N"],
                 )
             ).properties(title="Strain-life curve: epsilon_a vs N_f (log-log)", height=320)
-            st.altair_chart(epsilon_chart, use_container_width=True)
+            st.altair_chart(epsilon_chart, width="stretch")
             st.caption("This curve blends elastic and plastic strain contributions to estimate low-to-high cycle life.")
 
             st.subheader("Strain-life details")
@@ -734,7 +734,7 @@ if st.button("Estimate fatigue life", type="primary"):
                         color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                     )
                 ).properties(title="Weibull probability plot: ln(-ln(1-F)) vs ln(N)", height=320)
-                st.altair_chart(weibull_prob_chart, use_container_width=True)
+                st.altair_chart(weibull_prob_chart, width="stretch")
                 st.caption("Linearity on Weibull coordinates indicates fit quality; triangles mark right-censored run-outs.")
 
             with wp2:
@@ -765,7 +765,7 @@ if st.button("Estimate fatigue life", type="primary"):
                         color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                     )
                 ).properties(title="Weibull survival curve: R(N) vs N", height=320)
-                st.altair_chart(survival_chart, use_container_width=True)
+                st.altair_chart(survival_chart, width="stretch")
                 st.caption("Use this curve to compare reliability targets against required service-life cycles.")
 
             assumptions = assumptions + weibull_result.notes
