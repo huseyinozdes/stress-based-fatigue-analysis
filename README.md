@@ -181,3 +181,42 @@ The current code is structured to allow a part catalog layer next:
 - map part IDs to default geometry/material/surface settings,
 - prefill those defaults in UI,
 - keep values user-overridable for what-if exploration.
+
+## Materials selection scaffold (Ashby-inspired)
+
+A second feature is being built incrementally in this repository: an
+Ashby-chart-style materials-selection tool for fatigue applications.
+
+### What is implemented (scaffold)
+
+| Module | Contents |
+|---|---|
+| `materials_selection_types.py` | Typed domain model: `MaterialProperties`, `FatigueMetrics`, `SelectionConstraint`, `SelectionCriteria`, `MaterialCandidate`, `SelectionResult`, `AshbyChartPayload` |
+| `materials_selection_service.py` | Selection engine shell: constraint filtering, placeholder min-max weighted-sum ranking, Ashby payload builder |
+| `ashby_plot_adapter.py` | Altair chart adapter: converts `AshbyChartPayload` → interactive scatter chart; axis-option registry |
+| `materials_selection_stubs.py` | Synthetic stub dataset (7 materials: steels, aluminium alloys, titanium, nylon) showing expected input shape |
+| `tests/test_materials_selection_scaffold.py` | 15 unit tests covering constraint filtering, ranking direction, fatigue metric derivation, and Ashby payload construction |
+
+The scaffold is surfaced in the Streamlit app under the **"Materials selection – Ashby diagram"** section at the bottom of the page.
+
+### What remains for next phase (literature-based calibration)
+
+1. Replace synthetic stubs with literature/experiment-backed datasets
+   (CES Edupack, ASM Handbooks, Shigley Appendix).
+2. Calibrate and validate the multi-objective scoring policy
+   (weighting, normalization; consider TOPSIS or Ashby performance index).
+3. Add uncertainty/confidence bands to ranking outputs.
+4. Add material-class envelope overlays and Pareto-front lines to the
+   Ashby chart (convex-hull or ellipse per class).
+5. Extend `FatigueMetrics` with fatigue-crack-growth threshold and
+   stress-intensity range once calibration data is available.
+
+### How to extend it
+
+- Add a new `MaterialProperties` instance to `materials_selection_stubs.py`
+  (or a separate module) and include it in the collection passed to
+  `evaluate_candidates()` / `build_ashby_payload()`.
+- Add new axis options to `ashby_plot_adapter.ashby_axis_options()`.
+- Implement the `# TODO` placeholders in `materials_selection_service.py`
+  to replace heuristic endurance estimates and placeholder ranking weights.
+

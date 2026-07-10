@@ -31,6 +31,10 @@ from units import (
     normalize_geometry_load_inputs,
     strain_to_microstrain,
 )
+from ashby_plot_adapter import ashby_axis_options, payload_to_altair
+from materials_selection_service import build_ashby_payload, evaluate_candidates
+from materials_selection_stubs import STUB_MATERIALS
+from materials_selection_types import SelectionConstraint, SelectionCriteria
 
 
 def _logspace_10(start_exp: float, end_exp: float, points: int) -> list[float]:
@@ -700,3 +704,118 @@ if st.button("Estimate fatigue life", type="primary"):
             st.write(f"- {note}")
     except ValueError as exc:
         st.error(_normalize_error_for_units(str(exc), unit_system))
+
+
+# ---------------------------------------------------------------------------
+# Materials selection scaffold (Ashby-inspired) – NOT calibrated for production
+# ---------------------------------------------------------------------------
+
+st.divider()
+st.header("Materials selection – Ashby diagram (scaffold)")
+st.warning(
+    "⚠️ **Scaffold only – not calibrated for engineering decisions.** "
+    "Material data are synthetic stubs. Replace with validated literature "
+    "values before using for part selection.",
+    icon="🔬",
+)
+
+_axis_options = ashby_axis_options()
+_axis_labels = list(_axis_options.keys())
+
+with st.expander("Configure Ashby chart axes and selection constraints", expanded=True):
+    col_x, col_y = st.columns(2)
+    with col_x:
+        x_label = st.selectbox(
+            "X-axis property",
+            _axis_labels,
+            index=_axis_labels.index("Young's modulus, E (MPa)"),
+            key="ashby_x",
+        )
+    with col_y:
+        y_label = st.selectbox(
+            "Y-axis property",
+            _axis_labels,
+            index=_axis_labels.index("Endurance limit, Se (MPa)"),
+            key="ashby_y",
+        )
+    log_x = st.checkbox("Log scale X", value=True, key="ashby_log_x")
+    log_y = st.checkbox("Log scale Y", value=True, key="ashby_log_y")
+
+    st.markdown("**Hard constraints** (leave blank to skip)")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        min_sy = st.number_input(
+            "Min yield strength (MPa)", min_value=0.0, value=0.0, step=50.0, key="ashby_min_sy"
+        )
+    with c2:
+        max_density = st.number_input(
+            "Max density (kg/m³)", min_value=0.0, value=0.0, step=500.0, key="ashby_max_rho"
+        )
+    with c3:
+        min_se = st.number_input(
+            "Min endurance limit (MPa)", min_value=0.0, value=0.0, step=25.0, key="ashby_min_se"
+        )
+
+_constraints: list[SelectionConstraint] = []
+if min_sy > 0.0:
+    _constraints.append(SelectionConstraint("yield_strength_mpa", min_value=min_sy))
+if max_density > 0.0:
+    _constraints.append(SelectionConstraint("density_kg_m3", max_value=max_density))
+if min_se > 0.0:
+    _constraints.append(SelectionConstraint("endurance_limit_mpa", min_value=min_se))
+
+_criteria = [
+    SelectionCriteria("endurance_limit_mpa", weight=0.5, maximize=True),
+    SelectionCriteria("yield_strength_mpa", weight=0.3, maximize=True),
+    SelectionCriteria("density_kg_m3", weight=0.2, maximize=False),
+]
+
+_sel_result = evaluate_candidates(STUB_MATERIALS, constraints=_constraints, criteria=_criteria)
+_selected_names = [c.properties.name for c in _sel_result.ranked]
+
+_x_prop = _axis_options[x_label]
+_y_prop = _axis_options[y_label]
+_payload = build_ashby_payload(
+    STUB_MATERIALS,
+    x_property=_x_prop,
+    y_property=_y_prop,
+    x_label=x_label,
+    y_label=y_label,
+    selected_names=_selected_names,
+)
+
+st.altair_chart(
+    payload_to_altair(_payload, log_x=log_x, log_y=log_y),
+    use_container_width=True,
+)
+st.caption(
+    "Red = passes constraints (selected candidates). Blue = all candidates. "
+    "Shape encodes material class."
+)
+
+if _sel_result.ranked:
+    st.markdown("**Feasible candidates (ranked)**")
+    rank_rows = []
+    for rank_i, cand in enumerate(_sel_result.ranked, start=1):
+        p = cand.properties
+        m = cand.fatigue_metrics
+        rank_rows.append(
+            {
+                "Rank": rank_i,
+                "Material": p.name,
+                "Class": p.material_class,
+                "Sy (MPa)": f"{p.yield_strength_mpa:.0f}",
+                "Sut (MPa)": f"{p.ultimate_strength_mpa:.0f}",
+                "Se (MPa)": f"{p.endurance_limit_mpa:.0f}" if p.endurance_limit_mpa else "est.",
+                "ρ (kg/m³)": f"{p.density_kg_m3:.0f}",
+                "Se/ρ": f"{m.specific_endurance:.4f}" if m else "–",
+            }
+        )
+    st.dataframe(rank_rows, use_container_width=True, hide_index=True)
+else:
+    st.info("No materials satisfy the current constraints.")
+
+with st.expander("Scaffold notes"):
+    for note in _sel_result.notes + _payload.notes:
+        st.caption(f"- {note}")
+
