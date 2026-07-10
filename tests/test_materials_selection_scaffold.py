@@ -125,3 +125,12 @@ def test_project_text_has_updated_ashby_labels() -> None:
     readme_text = (repo_root / "README.md").read_text(encoding="utf-8")
     assert "Materials selection scaffold (Ashby)" in app_text
     assert "Materials-selection scaffold (Ashby, new)" in readme_text
+
+
+def test_app_has_no_deprecated_use_container_width() -> None:
+    """Guard against re-introducing use_container_width (removed in Streamlit >=2)."""
+    repo_root = Path(__file__).resolve().parent.parent
+    app_text = (repo_root / "app.py").read_text(encoding="utf-8")
+    assert "use_container_width" not in app_text, (
+        "use_container_width is deprecated and removed; use width='stretch' or width='content' instead."
+    )
