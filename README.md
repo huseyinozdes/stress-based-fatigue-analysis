@@ -182,7 +182,7 @@ The current code is structured to allow a part catalog layer next:
 - prefill those defaults in UI,
 - keep values user-overridable for what-if exploration.
 
-## Materials-selection scaffold (Ashby-inspired, new)
+## Materials-selection scaffold (Ashby, new)
 
 This repository now includes a **first-phase scaffold** for engineering materials selection with fatigue-aware properties:
 
@@ -190,7 +190,7 @@ This repository now includes a **first-phase scaffold** for engineering material
 - `materials_selection_service.py`: selection/constraint engine shell with explicit TODO placeholders for calibrated weighting, normalization, and uncertainty-aware ranking.
 - `ashby_plot_adapter.py`: plotting adapter shell that maps selected material properties to Ashby-like x/y payload points and highlight flags.
 - `materials_selection_stubs.py`: tiny synthetic input stubs demonstrating expected request/material schema.
-- `app.py`: a discoverability section in Streamlit ("Materials selection scaffold (Ashby-inspired)") showing scaffold inputs, placeholder ranking output, and payload preview.
+- `app.py`: a discoverability section in Streamlit ("Materials selection scaffold (Ashby)") showing scaffold inputs, deterministic baseline ranking output, and payload preview.
 
 ### What is intentionally not finalized yet
 

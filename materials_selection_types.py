@@ -96,10 +96,20 @@ class AshbyPoint:
 
 
 @dataclass(frozen=True)
+class AshbyDroppedPoint:
+    material_id: str
+    material_name: str
+    missing_axis_keys: tuple[str, ...]
+    reason: str
+
+
+@dataclass(frozen=True)
 class AshbyChartPayload:
     x_axis: AshbyAxis
     y_axis: AshbyAxis
     points: tuple[AshbyPoint, ...]
+    dropped_points: tuple[AshbyDroppedPoint, ...] = ()
+    highlighted_material_ids: tuple[str, ...] = ()
     filters_applied: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
 

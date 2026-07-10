@@ -174,7 +174,7 @@ def _render_nomenclature() -> None:
 
 
 def _render_materials_selection_scaffold() -> None:
-    with st.expander("Materials selection scaffold (Ashby-inspired)", expanded=False):
+    with st.expander("Materials selection scaffold (Ashby)", expanded=False):
         st.caption(
             "Scaffold preview only: this section defines starter architecture for materials/fatigue selection "
             "and Ashby-like plotting payloads. It is not literature-calibrated for design decisions yet."
@@ -196,7 +196,7 @@ def _render_materials_selection_scaffold() -> None:
             (
                 "request_name: Scaffold demo request\n"
                 "constraints: yield_strength >= 250 MPa, endurance_limit >= 90 MPa\n"
-                "criteria (placeholder only): maximize endurance limit, minimize density"
+                "criteria (deterministic baseline): maximize endurance limit, minimize density"
             )
         )
 
@@ -204,11 +204,11 @@ def _render_materials_selection_scaffold() -> None:
             {
                 "material": candidate.material.identity.name,
                 "family": candidate.material.identity.family,
-                "placeholder_score": candidate.score,
+                "baseline_score": candidate.score,
             }
             for candidate in selection.ranked_candidates
         ]
-        st.markdown("**Scaffold ranking output (placeholder scoring)**")
+        st.markdown("**Scaffold ranking output (deterministic baseline scoring)**")
         st.dataframe(candidate_rows, use_container_width=True)
 
         point_rows = [
@@ -222,6 +222,17 @@ def _render_materials_selection_scaffold() -> None:
         ]
         st.markdown(f"**Ashby payload preview: {ashby_payload.x_axis.label} vs {ashby_payload.y_axis.label}**")
         st.dataframe(point_rows, use_container_width=True)
+        if ashby_payload.dropped_points:
+            dropped_rows = [
+                {
+                    "material": dropped.material_name,
+                    "missing_axis_keys": ", ".join(dropped.missing_axis_keys),
+                    "reason": dropped.reason,
+                }
+                for dropped in ashby_payload.dropped_points
+            ]
+            st.markdown("**Dropped points metadata**")
+            st.dataframe(dropped_rows, use_container_width=True)
 
         st.markdown("**Pending calibration TODOs**")
         for todo in selection.unresolved_todos:
