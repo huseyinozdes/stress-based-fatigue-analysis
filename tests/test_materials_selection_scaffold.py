@@ -1,5 +1,8 @@
 from dataclasses import replace
 from pathlib import Path
+import subprocess
+import sys
+import textwrap
 
 from ashby_plot_adapter import ScaffoldAshbyPlotAdapter, get_payload_dropped_points
 from materials_selection_service import MaterialsSelectionService
@@ -134,3 +137,43 @@ def test_app_has_no_deprecated_use_container_width() -> None:
     assert "use_container_width" not in app_text, (
         "use_container_width is deprecated and removed; use width='stretch' or width='content' instead."
     )
+
+
+def test_app_startup_import_handles_adapter_without_helper_symbol(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    shadow_adapter = tmp_path / "ashby_plot_adapter.py"
+    shadow_adapter.write_text(
+        textwrap.dedent(
+            """
+            class _Payload:
+                def __init__(self, x_axis, y_axis):
+                    self.x_axis = x_axis
+                    self.y_axis = y_axis
+                    self.points = ()
+                    self.filters_applied = ()
+                    self.notes = ()
+
+            class ScaffoldAshbyPlotAdapter:
+                def build_payload(self, materials, x_axis, y_axis, highlighted_material_ids=None):
+                    return _Payload(x_axis, y_axis)
+            """
+        ),
+        encoding="utf-8",
+    )
+    script = textwrap.dedent(
+        f"""
+        import sys
+        sys.path.insert(0, {str(tmp_path)!r})
+        sys.path.insert(1, {str(repo_root)!r})
+        import app  # noqa: F401
+        print("APP_IMPORT_OK")
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"stdout:\\n{result.stdout}\\nstderr:\\n{result.stderr}"
+    assert "APP_IMPORT_OK" in result.stdout
