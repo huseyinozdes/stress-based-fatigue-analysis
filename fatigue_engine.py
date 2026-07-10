@@ -129,7 +129,7 @@ class FatigueEngine:
     def infer_walker_exponent(self, qt: float) -> float:
         """Infer Walker exponent from structural quality index.
 
-        This is a thesis-inspired linear empirical mapping placeholder.
+        This is a thesis-derived linear empirical mapping placeholder.
         """
         exponent = self.walker_qt_intercept + self.walker_qt_slope * qt
         return max(0.05, min(exponent, 0.95))
