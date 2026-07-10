@@ -5,7 +5,7 @@ from math import log
 import altair as alt
 import streamlit as st
 
-from ashby_plot_adapter import ScaffoldAshbyPlotAdapter, get_payload_dropped_points
+import ashby_plot_adapter as _ashby_plot_adapter
 from fatigue_model import (
     LOAD_FACTOR,
     MATERIALS,
@@ -39,6 +39,21 @@ from units import (
     normalize_geometry_load_inputs,
     strain_to_microstrain,
 )
+
+ScaffoldAshbyPlotAdapter = _ashby_plot_adapter.ScaffoldAshbyPlotAdapter
+if hasattr(_ashby_plot_adapter, "get_payload_dropped_points"):
+    get_payload_dropped_points = _ashby_plot_adapter.get_payload_dropped_points
+else:
+    # Compatibility for deployments where app.py is newer than the adapter module.
+    def get_payload_dropped_points(payload: object) -> tuple[object, ...]:
+        dropped = getattr(payload, "dropped_points", None)
+        if dropped is None:
+            dropped = getattr(payload, "dropped_materials", ())
+        if isinstance(dropped, tuple):
+            return dropped
+        if isinstance(dropped, list):
+            return tuple(dropped)
+        return ()
 
 
 def _logspace_10(start_exp: float, end_exp: float, points: int) -> list[float]:
