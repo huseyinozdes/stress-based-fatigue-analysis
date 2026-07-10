@@ -16,6 +16,18 @@ _PLOT_PROPERTY_ACCESSORS = {
 }
 
 
+def get_payload_dropped_points(payload: object) -> tuple[object, ...]:
+    """Compatibility accessor for dropped-point metadata across payload revisions."""
+    dropped = getattr(payload, "dropped_points", None)
+    if dropped is None:
+        dropped = getattr(payload, "dropped_materials", ())
+    if isinstance(dropped, tuple):
+        return dropped
+    if isinstance(dropped, list):
+        return tuple(dropped)
+    return ()
+
+
 @dataclass
 class ScaffoldAshbyPlotAdapter:
     """Builds chart-ready payloads for Ashby-style plotting scaffolds."""

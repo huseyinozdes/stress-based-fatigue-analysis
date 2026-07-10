@@ -5,7 +5,7 @@ from math import log
 import altair as alt
 import streamlit as st
 
-from ashby_plot_adapter import ScaffoldAshbyPlotAdapter
+from ashby_plot_adapter import ScaffoldAshbyPlotAdapter, get_payload_dropped_points
 from fatigue_model import (
     LOAD_FACTOR,
     MATERIALS,
@@ -222,14 +222,15 @@ def _render_materials_selection_scaffold() -> None:
         ]
         st.markdown(f"**Ashby payload preview: {ashby_payload.x_axis.label} vs {ashby_payload.y_axis.label}**")
         st.dataframe(point_rows, use_container_width=True)
-        if ashby_payload.dropped_points:
+        dropped_points = get_payload_dropped_points(ashby_payload)
+        if dropped_points:
             dropped_rows = [
                 {
-                    "material": dropped.material_name,
-                    "missing_axis_keys": ", ".join(dropped.missing_axis_keys),
-                    "reason": dropped.reason,
+                    "material": getattr(dropped, "material_name", "unknown"),
+                    "missing_axis_keys": ", ".join(getattr(dropped, "missing_axis_keys", ())),
+                    "reason": getattr(dropped, "reason", "unspecified"),
                 }
-                for dropped in ashby_payload.dropped_points
+                for dropped in dropped_points
             ]
             st.markdown("**Dropped points metadata**")
             st.dataframe(dropped_rows, use_container_width=True)

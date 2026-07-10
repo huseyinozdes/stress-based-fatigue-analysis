@@ -1,7 +1,7 @@
 from dataclasses import replace
 from pathlib import Path
 
-from ashby_plot_adapter import ScaffoldAshbyPlotAdapter
+from ashby_plot_adapter import ScaffoldAshbyPlotAdapter, get_payload_dropped_points
 from materials_selection_service import MaterialsSelectionService
 from materials_selection_types import SelectionCriterion, SelectionRequest
 from materials_selection_stubs import (
@@ -106,6 +106,17 @@ def test_ashby_adapter_marks_dropped_points_with_structured_metadata() -> None:
     assert dropped.material_id == "steel-aisi1045"
     assert "missing_axis_value" == dropped.reason
     assert "fatigue.not_available" in dropped.missing_axis_keys
+
+
+def test_dropped_points_accessor_handles_legacy_payload_shape() -> None:
+    class LegacyPayload:
+        dropped_materials = [{"material_name": "Legacy"}]
+
+    class UnknownPayload:
+        pass
+
+    assert len(get_payload_dropped_points(LegacyPayload())) == 1
+    assert get_payload_dropped_points(UnknownPayload()) == ()
 
 
 def test_project_text_has_updated_ashby_labels() -> None:
