@@ -5,6 +5,7 @@ from math import log
 import altair as alt
 import streamlit as st
 
+from ashby_plot_adapter import ScaffoldAshbyPlotAdapter
 from fatigue_model import (
     LOAD_FACTOR,
     MATERIALS,
@@ -19,6 +20,13 @@ from fatigue_model import (
     estimate_weibull_life,
     parse_weibull_observations,
     weibull_survival_probability,
+)
+from materials_selection_service import MaterialsSelectionService
+from materials_selection_stubs import (
+    EXAMPLE_MATERIALS,
+    EXAMPLE_SELECTION_REQUEST,
+    EXAMPLE_X_AXIS,
+    EXAMPLE_Y_AXIS,
 )
 from units import (
     UnitSystem,
@@ -165,6 +173,61 @@ def _render_nomenclature() -> None:
     st.markdown(header + body)
 
 
+def _render_materials_selection_scaffold() -> None:
+    with st.expander("Materials selection scaffold (Ashby-inspired)", expanded=False):
+        st.caption(
+            "Scaffold preview only: this section defines starter architecture for materials/fatigue selection "
+            "and Ashby-like plotting payloads. It is not literature-calibrated for design decisions yet."
+        )
+        selector = MaterialsSelectionService()
+        selection = selector.evaluate(EXAMPLE_MATERIALS, EXAMPLE_SELECTION_REQUEST)
+
+        highlight_ids = {candidate.material.identity.id for candidate in selection.ranked_candidates[:1]}
+        plot_adapter = ScaffoldAshbyPlotAdapter()
+        ashby_payload = plot_adapter.build_payload(
+            materials=selection.feasible_materials,
+            x_axis=EXAMPLE_X_AXIS,
+            y_axis=EXAMPLE_Y_AXIS,
+            highlighted_material_ids=highlight_ids,
+        )
+
+        st.markdown("**Stub selection inputs**")
+        st.code(
+            (
+                "request_name: Scaffold demo request\n"
+                "constraints: yield_strength >= 250 MPa, endurance_limit >= 90 MPa\n"
+                "criteria (placeholder only): maximize endurance limit, minimize density"
+            )
+        )
+
+        candidate_rows = [
+            {
+                "material": candidate.material.identity.name,
+                "family": candidate.material.identity.family,
+                "placeholder_score": candidate.score,
+            }
+            for candidate in selection.ranked_candidates
+        ]
+        st.markdown("**Scaffold ranking output (placeholder scoring)**")
+        st.dataframe(candidate_rows, use_container_width=True)
+
+        point_rows = [
+            {
+                "material": point.material_name,
+                "x": point.x,
+                "y": point.y,
+                "highlighted": point.is_highlighted,
+            }
+            for point in ashby_payload.points
+        ]
+        st.markdown(f"**Ashby payload preview: {ashby_payload.x_axis.label} vs {ashby_payload.y_axis.label}**")
+        st.dataframe(point_rows, use_container_width=True)
+
+        st.markdown("**Pending calibration TODOs**")
+        for todo in selection.unresolved_todos:
+            st.write(f"- {todo}")
+
+
 st.set_page_config(page_title="Fatigue Life Estimator (v2)", layout="wide")
 st.title("Fatigue Life Estimator (v2)")
 st.caption("Quick engineering fatigue estimator for screening decisions. Results are estimates, not design certification.")
@@ -184,6 +247,8 @@ with st.expander("Model options", expanded=False):
 with st.expander("Nomenclature & Symbols", expanded=False):
     st.caption("Thesis nomenclature source was not found in this repository, so this panel uses the app's model-based baseline nomenclature.")
     _render_nomenclature()
+
+_render_materials_selection_scaffold()
 
 model_mode = st.radio(
     "Select deterministic model",

@@ -181,3 +181,27 @@ The current code is structured to allow a part catalog layer next:
 - map part IDs to default geometry/material/surface settings,
 - prefill those defaults in UI,
 - keep values user-overridable for what-if exploration.
+
+## Materials-selection scaffold (Ashby-inspired, new)
+
+This repository now includes a **first-phase scaffold** for engineering materials selection with fatigue-aware properties:
+
+- `materials_selection_types.py`: typed domain records for material identity, mechanical properties, fatigue descriptors, constraints, criteria, and Ashby payload shapes.
+- `materials_selection_service.py`: selection/constraint engine shell with explicit TODO placeholders for calibrated weighting, normalization, and uncertainty-aware ranking.
+- `ashby_plot_adapter.py`: plotting adapter shell that maps selected material properties to Ashby-like x/y payload points and highlight flags.
+- `materials_selection_stubs.py`: tiny synthetic input stubs demonstrating expected request/material schema.
+- `app.py`: a discoverability section in Streamlit ("Materials selection scaffold (Ashby-inspired)") showing scaffold inputs, placeholder ranking output, and payload preview.
+
+### What is intentionally not finalized yet
+
+- No literature-grounded calibration of fatigue-property distributions.
+- No validated multi-objective optimization/weighting policy.
+- No final plotting style/class envelopes/Pareto overlays.
+- No claim that scaffold outputs are design-certification quality.
+
+### How to extend in the next phase
+
+1. Replace synthetic stubs with curated literature/experiment-backed datasets.
+2. Implement and validate domain-approved weighting and constraint semantics.
+3. Plug Ashby payload output into finalized plotting routines and design-space overlays.
+4. Add uncertainty handling and regression tests against benchmark case studies.
