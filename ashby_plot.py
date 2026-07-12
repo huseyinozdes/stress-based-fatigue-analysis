@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from html import escape
-from math import log10
+from math import isfinite, log10
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -85,8 +85,13 @@ def _validate_points(points: Sequence[AshbyPoint]) -> None:
     if not points:
         raise ValueError("At least one Ashby point is required.")
     for point in points:
-        if point.x_value <= 0 or point.y_value <= 0:
-            raise ValueError("Ashby plot values must be positive for log-log axes.")
+        if (
+            not isfinite(point.x_value)
+            or not isfinite(point.y_value)
+            or point.x_value <= 0
+            or point.y_value <= 0
+        ):
+            raise ValueError("Ashby plot values must be finite and positive for log-log axes.")
 
 
 def build_tooltip_html(

@@ -5,6 +5,7 @@ from math import log
 import altair as alt
 import streamlit as st
 
+import ashby_plot_adapter as _ashby_plot_adapter
 from fatigue_model import (
     LOAD_FACTOR,
     MATERIALS,
@@ -20,6 +21,13 @@ from fatigue_model import (
     parse_weibull_observations,
     weibull_survival_probability,
 )
+from materials_selection_service import MaterialsSelectionService
+from materials_selection_stubs import (
+    EXAMPLE_MATERIALS,
+    EXAMPLE_SELECTION_REQUEST,
+    EXAMPLE_X_AXIS,
+    EXAMPLE_Y_AXIS,
+)
 from units import (
     UnitSystem,
     ksi_to_mpa,
@@ -32,6 +40,21 @@ from units import (
     strain_to_microstrain,
 )
 from project_version import PROJECT_VERSION
+
+ScaffoldAshbyPlotAdapter = _ashby_plot_adapter.ScaffoldAshbyPlotAdapter
+if hasattr(_ashby_plot_adapter, "get_payload_dropped_points"):
+    get_payload_dropped_points = _ashby_plot_adapter.get_payload_dropped_points
+else:
+    # Compatibility for deployments where app.py is newer than the adapter module.
+    def get_payload_dropped_points(payload: object) -> tuple[object, ...]:
+        dropped = getattr(payload, "dropped_points", None)
+        if dropped is None:
+            dropped = getattr(payload, "dropped_materials", ())
+        if isinstance(dropped, tuple):
+            return dropped
+        if isinstance(dropped, list):
+            return tuple(dropped)
+        return ()
 
 
 def _logspace_10(start_exp: float, end_exp: float, points: int) -> list[float]:
@@ -166,6 +189,73 @@ def _render_nomenclature() -> None:
     st.markdown(header + body)
 
 
+def _render_materials_selection_scaffold() -> None:
+    with st.expander("Materials selection scaffold (Ashby)", expanded=False):
+        st.caption(
+            "Scaffold preview only: this section defines starter architecture for materials/fatigue selection "
+            "and Ashby-like plotting payloads. It is not literature-calibrated for design decisions yet."
+        )
+        selector = MaterialsSelectionService()
+        selection = selector.evaluate(EXAMPLE_MATERIALS, EXAMPLE_SELECTION_REQUEST)
+
+        highlight_ids = {candidate.material.identity.id for candidate in selection.ranked_candidates[:1]}
+        plot_adapter = ScaffoldAshbyPlotAdapter()
+        ashby_payload = plot_adapter.build_payload(
+            materials=selection.feasible_materials,
+            x_axis=EXAMPLE_X_AXIS,
+            y_axis=EXAMPLE_Y_AXIS,
+            highlighted_material_ids=highlight_ids,
+        )
+
+        st.markdown("**Stub selection inputs**")
+        st.code(
+            (
+                "request_name: Scaffold demo request\n"
+                "constraints: yield_strength >= 250 MPa, endurance_limit >= 90 MPa\n"
+                "criteria (deterministic baseline): maximize endurance limit, minimize density"
+            )
+        )
+
+        candidate_rows = [
+            {
+                "material": candidate.material.identity.name,
+                "family": candidate.material.identity.family,
+                "baseline_score": candidate.score,
+            }
+            for candidate in selection.ranked_candidates
+        ]
+        st.markdown("**Scaffold ranking output (deterministic baseline scoring)**")
+        st.dataframe(candidate_rows, width="stretch")
+
+        point_rows = [
+            {
+                "material": point.material_name,
+                "x": point.x,
+                "y": point.y,
+                "highlighted": point.is_highlighted,
+            }
+            for point in ashby_payload.points
+        ]
+        st.markdown(f"**Ashby payload preview: {ashby_payload.x_axis.label} vs {ashby_payload.y_axis.label}**")
+        st.dataframe(point_rows, width="stretch")
+        dropped_points = get_payload_dropped_points(ashby_payload)
+        if dropped_points:
+            dropped_rows = [
+                {
+                    "material": getattr(dropped, "material_name", "unknown"),
+                    "missing_axis_keys": ", ".join(getattr(dropped, "missing_axis_keys", ())),
+                    "reason": getattr(dropped, "reason", "unspecified"),
+                }
+                for dropped in dropped_points
+            ]
+            st.markdown("**Dropped points metadata**")
+            st.dataframe(dropped_rows, width="stretch")
+
+        st.markdown("**Pending calibration TODOs**")
+        for todo in selection.unresolved_todos:
+            st.write(f"- {todo}")
+
+
 st.set_page_config(page_title=f"Fatigue Life Estimator (v{PROJECT_VERSION})", layout="wide")
 st.title(f"Fatigue Life Estimator (v{PROJECT_VERSION})")
 st.caption("Quick engineering fatigue estimator for screening decisions. Results are estimates, not design certification.")
@@ -185,6 +275,8 @@ with st.expander("Model options", expanded=False):
 with st.expander("Nomenclature & Symbols", expanded=False):
     st.caption("Thesis nomenclature source was not found in this repository, so this panel uses the app's model-based baseline nomenclature.")
     _render_nomenclature()
+
+_render_materials_selection_scaffold()
 
 model_mode = st.radio(
     "Select deterministic model",
@@ -534,7 +626,7 @@ if st.button("Estimate fatigue life", type="primary"):
                     tooltip=["cycles:Q", "stress:Q", "series:N"],
                 )
             ).properties(title="Wohler S-N curve: sigma_a vs N_f (log-log)", height=320)
-            st.altair_chart(sn_chart, use_container_width=True)
+            st.altair_chart(sn_chart, width="stretch")
             st.caption("The point above the curve indicates a short-life condition; below it indicates longer life.")
 
         with gc2:
@@ -559,7 +651,7 @@ if st.button("Estimate fatigue life", type="primary"):
                     tooltip=["sigma_m:Q", "sigma_a:Q", "series:N"],
                 )
             ).properties(title="Goodman diagram: sigma_a vs sigma_m", height=320)
-            st.altair_chart(goodman_chart, use_container_width=True)
+            st.altair_chart(goodman_chart, width="stretch")
             st.caption("Points above the boundary are outside the allowable high-cycle fatigue envelope.")
 
         if model_mode == "Strain-life (epsilon-N)" and strain_inputs is not None and strain_result is not None:
@@ -589,7 +681,7 @@ if st.button("Estimate fatigue life", type="primary"):
                     tooltip=["cycles:Q", "strain:Q", "series:N"],
                 )
             ).properties(title="Strain-life curve: epsilon_a vs N_f (log-log)", height=320)
-            st.altair_chart(epsilon_chart, use_container_width=True)
+            st.altair_chart(epsilon_chart, width="stretch")
             st.caption("This curve blends elastic and plastic strain contributions to estimate low-to-high cycle life.")
 
             st.subheader("Strain-life details")
@@ -658,7 +750,7 @@ if st.button("Estimate fatigue life", type="primary"):
                         color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                     )
                 ).properties(title="Weibull probability plot: ln(-ln(1-F)) vs ln(N)", height=320)
-                st.altair_chart(weibull_prob_chart, use_container_width=True)
+                st.altair_chart(weibull_prob_chart, width="stretch")
                 st.caption("Linearity on Weibull coordinates indicates fit quality; triangles mark right-censored run-outs.")
 
             with wp2:
@@ -689,7 +781,7 @@ if st.button("Estimate fatigue life", type="primary"):
                         color=alt.Color("series:N", legend=alt.Legend(title="Legend")),
                     )
                 ).properties(title="Weibull survival curve: R(N) vs N", height=320)
-                st.altair_chart(survival_chart, use_container_width=True)
+                st.altair_chart(survival_chart, width="stretch")
                 st.caption("Use this curve to compare reliability targets against required service-life cycles.")
 
             assumptions = assumptions + weibull_result.notes

@@ -1,4 +1,5 @@
 import matplotlib
+import pytest
 
 matplotlib.use("Agg")
 
@@ -87,3 +88,16 @@ def test_interactive_html_contains_review_fields() -> None:
     assert "Confidence" in html
     assert "Source" in html
     plt.close(plot.figure)
+
+
+@pytest.mark.parametrize("invalid_value", [0.0, -1.0, float("nan"), float("inf")])
+def test_create_ashby_plot_rejects_invalid_log_values(invalid_value: float) -> None:
+    point = AshbyPoint(
+        name="Invalid",
+        family="Test",
+        x_value=invalid_value,
+        y_value=1.0,
+    )
+
+    with pytest.raises(ValueError, match="finite and positive"):
+        create_ashby_plot([point], x_label="X", y_label="Y")
