@@ -41,6 +41,7 @@ def test_cli_single_sample_runs_successfully() -> None:
     )
     assert result.returncode == 0
     assert "Predicted Cycles" in result.stdout
+    assert "Run summary: 1 sample(s), 1 succeeded, 0 failed" in result.stdout
     assert "Error in sample" not in result.stderr
 
 

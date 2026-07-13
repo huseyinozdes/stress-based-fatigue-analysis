@@ -190,7 +190,7 @@ def _render_nomenclature() -> None:
 
 
 def _render_materials_selection_scaffold() -> None:
-    with st.expander("Materials selection scaffold (Ashby)", expanded=False):
+    with st.expander("Developer preview: Materials selection scaffold (Ashby)", expanded=False):
         st.caption(
             "Scaffold preview only: this section defines starter architecture for materials/fatigue selection "
             "and Ashby-like plotting payloads. It is not literature-calibrated for design decisions yet."
@@ -317,8 +317,6 @@ with col1:
         st.caption(_format_conversion_hint(mm_to_in(diameter_value), "in"))
     else:
         st.caption(_format_conversion_hint(diameter_value * 25.4, "mm"))
-    st.markdown(r"Small-note symbol: $d$; area relation $A=\pi d^2/4$")
-
     surface_finish = st.selectbox("Surface finish", list(SURFACE_FINISH_COEFFICIENTS.keys()), index=1)
     reliability = st.selectbox("Reliability (%)", list(RELIABILITY_FACTOR.keys()), index=2)
     load_type = st.selectbox("Primary loading type for kc", list(LOAD_FACTOR.keys()), index=0)
@@ -345,8 +343,6 @@ with col2:
         st.caption(_format_conversion_hint(n_to_lbf(axial_mean_value), "lbf"))
     else:
         st.caption(_format_conversion_hint(axial_mean_value * 4.4482216152605, "N"))
-    st.markdown(r"Symbol mapping: $F_m$ is mean load.")
-
     axial_alt_value = st.number_input(
         f"Alternating axial force amplitude, Fa ({force_unit})",
         min_value=0.0,
@@ -358,8 +354,6 @@ with col2:
         st.caption(_format_conversion_hint(n_to_lbf(axial_alt_value), "lbf"))
     else:
         st.caption(_format_conversion_hint(axial_alt_value * 4.4482216152605, "N"))
-    st.markdown(r"Symbol mapping: $F_a$ is alternating amplitude.")
-
     moment_mean_value = st.number_input(
         f"Mean bending moment, Mm ({moment_unit})",
         min_value=0.0,
@@ -371,8 +365,6 @@ with col2:
         st.caption(_format_conversion_hint(nm_to_lbfin(moment_mean_value), "lbf*in"))
     else:
         st.caption(_format_conversion_hint(lbfin_to_nm(moment_mean_value), "N*m"))
-    st.markdown(r"Symbol mapping: $M_m$ is mean bending moment.")
-
     moment_alt_value = st.number_input(
         f"Alternating bending moment amplitude, Ma ({moment_unit})",
         min_value=0.0,
@@ -384,14 +376,10 @@ with col2:
         st.caption(_format_conversion_hint(nm_to_lbfin(moment_alt_value), "lbf*in"))
     else:
         st.caption(_format_conversion_hint(lbfin_to_nm(moment_alt_value), "N*m"))
-    st.markdown(r"Symbol mapping: $M_a$ is alternating bending moment amplitude.")
-
-st.markdown("##### Input quick guide")
-g1, g2 = st.columns(2)
-with g1:
-    st.info("Geometry: $d$ defines area $A=\\pi d^2/4$.\n\nAxial load: $F_m$ is mean, $F_a$ is alternating amplitude.")
-with g2:
-    st.info("Bending: $M_m$ is mean, $M_a$ is alternating amplitude.\n\nUse positive amplitudes for alternating terms.")
+st.caption(
+    r"Input symbols: $d$ defines area $A=\pi d^2/4$. "
+    r"$F_m,\ M_m$ are mean values and $F_a,\ M_a$ are alternating amplitudes (enter amplitudes as positive magnitudes)."
+)
 
 strain_inputs: StrainLifeInput | None = None
 if model_mode == "Strain-life (epsilon-N)":
@@ -476,14 +464,23 @@ if model_mode == "Strain-life (epsilon-N)":
         st.markdown(r"Symbols: $\varepsilon_a,\ \sigma_f',\ \varepsilon_f',\ b,\ c,\ E$")
 
 st.subheader("Reliability statistics (optional)")
-enable_weibull = st.checkbox("Enable Weibull reliability estimation (with run-out censoring)", value=True)
+if "weibull_data_text" not in st.session_state:
+    st.session_state["weibull_data_text"] = ""
+
+enable_weibull = st.checkbox("Enable Weibull reliability estimation (with run-out censoring)", value=False)
 weibull_data_text = ""
 target_cycles_reliability = 100_000.0
 if enable_weibull:
-    st.caption("Enter one sample per line: '<cycles>, <status>' where status is fail/failed/f or runout/censored/r.")
+    st.caption(
+        "Use measured fatigue test data for meaningful B-life estimates. "
+        "Format: '<cycles>, <status>' where status is fail/failed/f or runout/censored/r."
+    )
+    if st.button("Load demo Weibull dataset"):
+        st.session_state["weibull_data_text"] = "25000, fail\n40000, fail\n60000, fail\n85000, runout\n120000, runout"
     weibull_data_text = st.text_area(
         "Fatigue test data",
-        value="25000, fail\n40000, fail\n60000, fail\n85000, runout\n120000, runout",
+        key="weibull_data_text",
+        placeholder="25000, fail\n80000, runout",
         height=120,
     )
     target_cycles_reliability = st.number_input(
@@ -792,4 +789,12 @@ if st.button("Estimate fatigue life", type="primary"):
         for note in assumptions:
             st.write(f"- {note}")
     except ValueError as exc:
-        st.error(_normalize_error_for_units(str(exc), unit_system))
+        error_text = _normalize_error_for_units(str(exc), unit_system)
+        st.error(error_text)
+        if enable_weibull and (
+            "Line " in error_text
+            or "observations" in error_text
+            or "Weibull" in error_text
+            or "status" in error_text
+        ):
+            st.caption("Weibull input reminder: one sample per line, e.g., `25000, fail` or `80000, runout`.")
