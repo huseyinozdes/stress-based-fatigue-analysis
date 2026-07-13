@@ -177,6 +177,12 @@ def test_app_has_no_deprecated_use_container_width() -> None:
     )
 
 
+def test_streamlit_requirement_supports_responsive_width_api() -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    requirements_text = (repo_root / "requirements.txt").read_text(encoding="utf-8")
+    assert "streamlit>=1.59,<2" in requirements_text
+
+
 def test_app_startup_import_handles_adapter_without_helper_symbol(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parent.parent
     shadow_adapter = tmp_path / "ashby_plot_adapter.py"

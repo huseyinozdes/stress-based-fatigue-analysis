@@ -74,3 +74,4 @@ def test_material_review_rows_identify_sample_values() -> None:
     assert values["Family"] == "Steel"
     assert values["Density"].endswith("kg/m³")
     assert values["Endurance limit"].endswith("MPa")
+    assert values["Basquin exponent"] == "-0.089"

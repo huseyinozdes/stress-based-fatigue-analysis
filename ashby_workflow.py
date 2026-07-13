@@ -193,6 +193,10 @@ def material_review_rows(material: MaterialRecord) -> list[dict[str, str]]:
                 else f"{fatigue.fatigue_strength_coefficient_mpa:g} MPa"
             ),
         },
+        {
+            "Property": "Basquin exponent",
+            "Value": "not available" if fatigue.basquin_exponent is None else f"{fatigue.basquin_exponent:g}",
+        },
         {"Property": "Tags", "Value": ", ".join(material.tags) or "none"},
     ]
 

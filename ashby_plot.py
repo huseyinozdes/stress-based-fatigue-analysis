@@ -213,8 +213,13 @@ def create_ashby_plot(
     x_values = [point.x_value for point in points]
     x_min = min(x_values) * 0.85
     x_max = max(x_values) * 1.15
-    for guide in performance_indices:
-        add_performance_index_guideline(axes, guide, x_min=x_min, x_max=x_max)
+    try:
+        for guide in performance_indices:
+            add_performance_index_guideline(axes, guide, x_min=x_min, x_max=x_max)
+    except (OverflowError, ValueError):
+        if ax is None:
+            plt.close(figure)
+        raise
 
     axes.set_xscale("log")
     axes.set_yscale("log")

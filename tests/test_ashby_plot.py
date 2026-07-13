@@ -91,6 +91,34 @@ def test_interactive_html_contains_review_fields() -> None:
     plt.close(plot.figure)
 
 
+def test_create_ashby_plot_closes_owned_figure_when_guideline_overflows() -> None:
+    original_figures = set(plt.get_fignums())
+
+    with pytest.raises(OverflowError):
+        create_ashby_plot(
+            [
+                AshbyPoint(
+                    name="High-range density",
+                    family="Test",
+                    x_value=7850.0,
+                    y_value=290.0,
+                )
+            ],
+            x_label="Density",
+            y_label="Fatigue screening strength",
+            performance_indices=[
+                PerformanceIndexGuide(
+                    label="Extreme guide",
+                    constant=1.0e12,
+                    x_exponent=5.0,
+                    y_exponent=0.1,
+                )
+            ],
+        )
+
+    assert set(plt.get_fignums()) == original_figures
+
+
 @pytest.mark.parametrize("invalid_value", [0.0, -1.0, float("nan"), float("inf")])
 def test_create_ashby_plot_rejects_invalid_log_values(invalid_value: float) -> None:
     point = AshbyPoint(
