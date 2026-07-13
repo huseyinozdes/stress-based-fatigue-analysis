@@ -42,7 +42,7 @@ def main():
     # Tensile property input
     parser.add_argument('--uts', type=float, help='Ultimate tensile strength (MPa)')
     parser.add_argument('--ys', type=float, help='Yield strength (MPa)')
-    parser.add_argument('--elongation', type=float, help='Elongation at fracture (%)')
+    parser.add_argument('--elongation', type=float, help='Elongation at fracture (%%)')
     parser.add_argument('--csv-file', type=str, help='Load tensile data from CSV')
     
     # Fatigue loading
