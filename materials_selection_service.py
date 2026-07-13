@@ -59,7 +59,8 @@ class MaterialsSelectionService:
         value = accessor(material)
         if value is None:
             return None
-        return float(value)
+        numeric_value = float(value)
+        return numeric_value if isfinite(numeric_value) else None
 
     def _apply_constraints(
         self,
@@ -196,8 +197,10 @@ class MaterialsSelectionService:
 
     @staticmethod
     def _baseline_density_endurance_score(material: MaterialRecord) -> float | None:
-        if material.fatigue.endurance_limit_mpa is None:
+        endurance_limit = material.fatigue.endurance_limit_mpa
+        density = material.mechanical.density_kg_m3
+        if endurance_limit is None:
             return None
-        if material.mechanical.density_kg_m3 <= 0:
+        if not isfinite(endurance_limit) or not isfinite(density) or density <= 0:
             return None
-        return material.fatigue.endurance_limit_mpa / material.mechanical.density_kg_m3
+        return endurance_limit / density

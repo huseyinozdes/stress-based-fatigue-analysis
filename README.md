@@ -1,4 +1,4 @@
-# Stress-Based Fatigue Analysis — Web Estimator v2
+# Stress-Based Fatigue Analysis — Web Estimator v2.1.0
 
 This repository now includes a lightweight web app for quick-reference fatigue-life estimation.
 
@@ -93,6 +93,78 @@ $$
 - **Strain-life $\varepsilon$-N curve (log-log):** shows the predicted life from total strain amplitude $\varepsilon_a$ when the strain-life model is selected.
 - **Weibull probability plot:** visual fit check for the Weibull trend, with run-out samples shown as censored markers.
 - **Weibull survival curve:** reliability $R(N)$ vs cycles, including the selected target-cycle point.
+- **Ashby-style material map (log-log):** available through the new `ashby_plot.py` helper for density/property screening, material-family differentiation, and optional performance-index guide lines.
+
+## Project versioning
+
+- The repository now uses **Semantic Versioning** (`MAJOR.MINOR.PATCH`).
+- The single source of truth is the top-level `VERSION` file.
+- Runtime code reads that value through `project_version.py`, so the Streamlit title and demo scripts stay synchronized automatically.
+- For a release bump:
+  1. update `VERSION`,
+  2. refresh any README examples that mention the version explicitly,
+  3. rerun `python3 -m pytest -q`,
+  4. and publish/tag with the same SemVer value.
+
+## Ashby-style interactive plots
+
+Use the new Matplotlib utility module when you want an Ashby-style material-property view alongside the repository's fatigue calculations.
+
+### Features
+
+- log-log axes for wide property ranges,
+- material-family coloring/markers,
+- optional Ashby performance-index guide lines,
+- and **browser-safe HTML tooltips** via `mpld3` (DOM hover tooltips, not alert/confirm/prompt dialogs).
+
+### Example usage
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 examples/ashby_fatigue_demo.py
+```
+
+That example writes:
+
+- `ashby_fatigue_demo.html` for interactive browser review,
+- `ashby_fatigue_demo.png` for static sharing.
+
+The HTML tooltips include concise review fields such as material name, key properties, review note, confidence, and source. Common browsers treat them as normal in-page HTML elements, so they are not subject to pop-up blocking rules.
+
+### Reusing the helper in scripts or notebooks
+
+```python
+from ashby_plot import AshbyPoint, PerformanceIndexGuide, create_ashby_plot, export_interactive_ashby_html
+
+points = [
+    AshbyPoint(
+        name="Al 6061-T6",
+        family="Aluminum",
+        x_value=2.70,
+        y_value=96.0,
+        key_values={"Sut (MPa)": 310.0},
+        review_note="Finite-life follow-up recommended.",
+        confidence="Medium",
+        source="Repository material library",
+    )
+]
+
+plot = create_ashby_plot(
+    points,
+    x_label="Density",
+    x_unit="g/cm^3",
+    y_label="Fatigue screening strength",
+    y_unit="MPa",
+    performance_indices=[PerformanceIndexGuide(label="Specific fatigue strength", constant=60.0)],
+)
+export_interactive_ashby_html(plot, "ashby_plot.html")
+```
+
+### Caveats
+
+- Ashby helpers expect strictly positive property values because both axes use logarithmic scaling.
+- Tooltip interactivity depends on `mpld3`; if you only need a static figure, save the Matplotlib figure directly instead of exporting HTML.
+- Example fatigue-screening values beyond the repository's built-in material library are intentionally lightweight screening references, not certification data.
 
 ## Weibull data input format
 

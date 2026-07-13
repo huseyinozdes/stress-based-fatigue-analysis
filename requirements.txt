@@ -1,2 +1,4 @@
 streamlit>=1.36,<2
 pytest>=8.0,<9
+matplotlib>=3.9,<4
+mpld3>=0.5.10,<0.6

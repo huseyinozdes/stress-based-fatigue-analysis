@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 
 from materials_selection_types import AshbyAxis, AshbyChartPayload, AshbyDroppedPoint, AshbyPoint, MaterialRecord
 
@@ -102,4 +103,11 @@ class ScaffoldAshbyPlotAdapter:
         if accessor is None:
             return None
         value = accessor(material)
-        return float(value) if value is not None else None
+        if value is None:
+            return None
+        numeric_value = float(value)
+        if not isfinite(numeric_value):
+            return None
+        if axis.scale == "log" and numeric_value <= 0:
+            return None
+        return numeric_value

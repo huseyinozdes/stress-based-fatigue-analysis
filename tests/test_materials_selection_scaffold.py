@@ -6,7 +6,7 @@ import textwrap
 
 from ashby_plot_adapter import ScaffoldAshbyPlotAdapter, get_payload_dropped_points
 from materials_selection_service import MaterialsSelectionService
-from materials_selection_types import SelectionCriterion, SelectionRequest
+from materials_selection_types import NumericConstraint, SelectionCriterion, SelectionRequest
 from materials_selection_stubs import (
     EXAMPLE_MATERIALS,
     EXAMPLE_SELECTION_REQUEST,
@@ -70,6 +70,25 @@ def test_selection_service_uses_neutral_score_when_range_collapses() -> None:
     assert result.ranked_candidates[1].score == 0.5
 
 
+def test_selection_service_rejects_non_finite_constraint_values() -> None:
+    service = MaterialsSelectionService()
+    invalid_material = replace(
+        EXAMPLE_MATERIALS[0],
+        mechanical=replace(EXAMPLE_MATERIALS[0].mechanical, yield_strength_mpa=float("nan")),
+    )
+    request = SelectionRequest(
+        name="Finite values only",
+        numeric_constraints=(
+            NumericConstraint(property_key="mechanical.yield_strength_mpa", min_value=250.0),
+        ),
+    )
+
+    result = service.evaluate((invalid_material,), request)
+
+    assert result.feasible_materials == ()
+    assert result.ranked_candidates == ()
+
+
 def test_ashby_adapter_payload_contains_axis_and_points() -> None:
     adapter = ScaffoldAshbyPlotAdapter()
     payload = adapter.build_payload(
@@ -109,6 +128,24 @@ def test_ashby_adapter_marks_dropped_points_with_structured_metadata() -> None:
     assert dropped.material_id == "steel-aisi1045"
     assert "missing_axis_value" == dropped.reason
     assert "fatigue.not_available" in dropped.missing_axis_keys
+
+
+def test_ashby_adapter_drops_invalid_log_axis_values() -> None:
+    adapter = ScaffoldAshbyPlotAdapter()
+    invalid_values = (0.0, -1.0, float("nan"), float("inf"))
+
+    for value in invalid_values:
+        material = replace(
+            EXAMPLE_MATERIALS[0],
+            mechanical=replace(EXAMPLE_MATERIALS[0].mechanical, density_kg_m3=value),
+        )
+        payload = adapter.build_payload(
+            materials=(material,),
+            x_axis=EXAMPLE_X_AXIS,
+            y_axis=EXAMPLE_Y_AXIS,
+        )
+        assert payload.points == ()
+        assert len(payload.dropped_points) == 1
 
 
 def test_dropped_points_accessor_handles_legacy_payload_shape() -> None:
