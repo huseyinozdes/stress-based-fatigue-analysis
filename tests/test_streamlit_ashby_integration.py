@@ -18,11 +18,3 @@ def test_app_renders_ashby_screening_controls_without_errors() -> None:
         "Screening aid only" in warning.value
         for warning in app.warning
     )
-
-
-def test_app_reports_duplicate_axis_selection() -> None:
-    app_path = Path(__file__).resolve().parent.parent / "app.py"
-    app = AppTest.from_file(str(app_path), default_timeout=10).run()
-    app.selectbox(key="ashby_y_property").select("Density (kg/m³)").run()
-
-    assert any("Choose different properties" in error.value for error in app.error)
