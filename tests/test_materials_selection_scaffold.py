@@ -163,8 +163,9 @@ def test_project_text_has_updated_ashby_labels() -> None:
     repo_root = Path(__file__).resolve().parent.parent
     app_text = (repo_root / "app.py").read_text(encoding="utf-8")
     readme_text = (repo_root / "README.md").read_text(encoding="utf-8")
-    assert "Materials selection scaffold (Ashby)" in app_text
-    assert "Materials-selection scaffold (Ashby, new)" in readme_text
+    assert "Ashby material screening" in app_text
+    assert "Ashby material screening workflow" in readme_text
+    assert "st.pyplot(ashby_plot.figure, width=\"stretch\")" in app_text
 
 
 def test_app_has_no_deprecated_use_container_width() -> None:
@@ -174,6 +175,12 @@ def test_app_has_no_deprecated_use_container_width() -> None:
     assert "use_container_width" not in app_text, (
         "use_container_width is deprecated and removed; use width='stretch' or width='content' instead."
     )
+
+
+def test_streamlit_requirement_supports_responsive_width_api() -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    requirements_text = (repo_root / "requirements.txt").read_text(encoding="utf-8")
+    assert "streamlit>=1.59,<2" in requirements_text
 
 
 def test_app_startup_import_handles_adapter_without_helper_symbol(tmp_path: Path) -> None:

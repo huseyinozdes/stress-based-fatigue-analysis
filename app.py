@@ -3,9 +3,16 @@ from __future__ import annotations
 from math import log
 
 import altair as alt
+from matplotlib import pyplot as plt
 import streamlit as st
 
-import ashby_plot_adapter as _ashby_plot_adapter
+from ashby_plot import PerformanceIndexGuide, create_ashby_plot
+from ashby_workflow import (
+    ASHBY_PROPERTIES,
+    build_screening_data,
+    filter_materials,
+    material_review_rows,
+)
 from fatigue_model import (
     LOAD_FACTOR,
     MATERIALS,
@@ -21,13 +28,7 @@ from fatigue_model import (
     parse_weibull_observations,
     weibull_survival_probability,
 )
-from materials_selection_service import MaterialsSelectionService
-from materials_selection_stubs import (
-    EXAMPLE_MATERIALS,
-    EXAMPLE_SELECTION_REQUEST,
-    EXAMPLE_X_AXIS,
-    EXAMPLE_Y_AXIS,
-)
+from materials_selection_stubs import EXAMPLE_MATERIALS
 from units import (
     UnitSystem,
     ksi_to_mpa,
@@ -40,22 +41,6 @@ from units import (
     strain_to_microstrain,
 )
 from project_version import PROJECT_VERSION
-
-ScaffoldAshbyPlotAdapter = _ashby_plot_adapter.ScaffoldAshbyPlotAdapter
-if hasattr(_ashby_plot_adapter, "get_payload_dropped_points"):
-    get_payload_dropped_points = _ashby_plot_adapter.get_payload_dropped_points
-else:
-    # Compatibility for deployments where app.py is newer than the adapter module.
-    def get_payload_dropped_points(payload: object) -> tuple[object, ...]:
-        dropped = getattr(payload, "dropped_points", None)
-        if dropped is None:
-            dropped = getattr(payload, "dropped_materials", ())
-        if isinstance(dropped, tuple):
-            return dropped
-        if isinstance(dropped, list):
-            return tuple(dropped)
-        return ()
-
 
 def _logspace_10(start_exp: float, end_exp: float, points: int) -> list[float]:
     if points < 2:
@@ -189,71 +174,148 @@ def _render_nomenclature() -> None:
     st.markdown(header + body)
 
 
-def _render_materials_selection_scaffold() -> None:
-    with st.expander("Materials selection scaffold (Ashby)", expanded=False):
-        st.caption(
-            "Scaffold preview only: this section defines starter architecture for materials/fatigue selection "
-            "and Ashby-like plotting payloads. It is not literature-calibrated for design decisions yet."
+def _render_materials_selection_workflow() -> None:
+    with st.expander("Ashby material screening", expanded=True):
+        st.warning(
+            "Screening aid only. The current repository material records are illustrative stub data, "
+            "not design-certified allowables or a substitute for validated supplier/test data."
         )
-        selector = MaterialsSelectionService()
-        selection = selector.evaluate(EXAMPLE_MATERIALS, EXAMPLE_SELECTION_REQUEST)
-
-        highlight_ids = {candidate.material.identity.id for candidate in selection.ranked_candidates[:1]}
-        plot_adapter = ScaffoldAshbyPlotAdapter()
-        ashby_payload = plot_adapter.build_payload(
-            materials=selection.feasible_materials,
-            x_axis=EXAMPLE_X_AXIS,
-            y_axis=EXAMPLE_Y_AXIS,
-            highlighted_material_ids=highlight_ids,
+        st.markdown(
+            "Choose two positive-valued properties, narrow the sample set, and compare candidates on a "
+            "log-log Ashby map. Review the exact record below the plot before using a candidate elsewhere."
         )
 
-        st.markdown("**Stub selection inputs**")
-        st.code(
-            (
-                "request_name: Scaffold demo request\n"
-                "constraints: yield_strength >= 250 MPa, endurance_limit >= 90 MPa\n"
-                "criteria (deterministic baseline): maximize endurance limit, minimize density"
+        property_labels = {
+            f"{material_property.label} ({material_property.unit})": material_property
+            for material_property in ASHBY_PROPERTIES
+        }
+        property_options = list(property_labels)
+        x_label = st.selectbox(
+            "Horizontal-axis property",
+            property_options,
+            index=0,
+            key="ashby_x_property",
+        )
+        y_label = st.selectbox(
+            "Vertical-axis property",
+            property_options,
+            index=4,
+            key="ashby_y_property",
+        )
+
+        all_families = tuple(sorted({material.identity.family for material in EXAMPLE_MATERIALS}))
+        selected_families = tuple(
+            st.multiselect(
+                "Material families",
+                all_families,
+                default=all_families,
+                key="ashby_families",
             )
         )
+        family_materials = filter_materials(EXAMPLE_MATERIALS, families=selected_families)
+        material_names = {material.identity.name: material.identity.id for material in family_materials}
+        selected_names = st.multiselect(
+            "Materials",
+            list(material_names),
+            default=list(material_names),
+            key="ashby_materials",
+        )
+        selected_materials = filter_materials(
+            family_materials,
+            material_ids=tuple(material_names[name] for name in selected_names),
+        )
 
-        candidate_rows = [
-            {
-                "material": candidate.material.identity.name,
-                "family": candidate.material.identity.family,
-                "baseline_score": candidate.score,
-            }
-            for candidate in selection.ranked_candidates
-        ]
-        st.markdown("**Scaffold ranking output (deterministic baseline scoring)**")
-        st.dataframe(candidate_rows, width="stretch")
-
-        point_rows = [
-            {
-                "material": point.material_name,
-                "x": point.x,
-                "y": point.y,
-                "highlighted": point.is_highlighted,
-            }
-            for point in ashby_payload.points
-        ]
-        st.markdown(f"**Ashby payload preview: {ashby_payload.x_axis.label} vs {ashby_payload.y_axis.label}**")
-        st.dataframe(point_rows, width="stretch")
-        dropped_points = get_payload_dropped_points(ashby_payload)
-        if dropped_points:
-            dropped_rows = [
-                {
-                    "material": getattr(dropped, "material_name", "unknown"),
-                    "missing_axis_keys": ", ".join(getattr(dropped, "missing_axis_keys", ())),
-                    "reason": getattr(dropped, "reason", "unspecified"),
-                }
-                for dropped in dropped_points
+        show_guide = st.checkbox(
+            "Show optional performance-index guideline",
+            value=False,
+            help="Adds a visual power-law reference only; it does not rank or certify materials.",
+        )
+        guide: list[PerformanceIndexGuide] = []
+        if show_guide:
+            guide_constant = st.number_input(
+                "Guideline constant",
+                min_value=0.000001,
+                max_value=1.0e12,
+                value=1.0,
+                format="%.6g",
+            )
+            guide_x_exponent = st.number_input(
+                "Guideline x exponent",
+                min_value=-5.0,
+                max_value=5.0,
+                value=1.0,
+                format="%.3f",
+            )
+            guide_y_exponent = st.number_input(
+                "Guideline y exponent",
+                min_value=0.1,
+                max_value=5.0,
+                value=1.0,
+                format="%.3f",
+            )
+            st.caption("Guide equation: y = (constant × x^(x exponent))^(1 / y exponent).")
+            guide = [
+                PerformanceIndexGuide(
+                    label="User-defined screening guideline",
+                    constant=float(guide_constant),
+                    x_exponent=float(guide_x_exponent),
+                    y_exponent=float(guide_y_exponent),
+                )
             ]
-            st.markdown("**Dropped points metadata**")
-            st.dataframe(dropped_rows, width="stretch")
 
-        st.markdown("**Pending calibration TODOs**")
-        for todo in selection.unresolved_todos:
-            st.write(f"- {todo}")
+        x_property = property_labels[x_label]
+        y_property = property_labels[y_label]
+        if x_property.key == y_property.key:
+            st.error("Choose different properties for the horizontal and vertical axes.")
+            return
+        if not selected_families:
+            st.info("Select at least one material family to populate the screening map.")
+            return
+        if not selected_materials:
+            st.info("Select at least one material to populate the screening map.")
+            return
+
+        screening_data = build_screening_data(
+            selected_materials,
+            x_property_key=x_property.key,
+            y_property_key=y_property.key,
+        )
+        if screening_data.dropped_materials:
+            for dropped in screening_data.dropped_materials:
+                st.warning(f"{dropped.material_name} was not plotted: {dropped.reason}")
+        if not screening_data.points:
+            st.error("No selected materials have finite, positive values for both log-axis properties.")
+            return
+
+        try:
+            ashby_plot = create_ashby_plot(
+                screening_data.points,
+                x_label=x_property.label,
+                x_unit=x_property.unit,
+                y_label=y_property.label,
+                y_unit=y_property.unit,
+                title="Illustrative material-property screening map",
+                performance_indices=guide,
+            )
+        except (OverflowError, ValueError) as exc:
+            st.error(f"Unable to render the Ashby map: {exc}")
+            return
+
+        st.pyplot(ashby_plot.figure, width="stretch")
+        plt.close(ashby_plot.figure)
+        st.caption(
+            "Both axes are logarithmic. Point colors/markers identify material families; "
+            "the guideline, when enabled, is a user-defined visual reference."
+        )
+
+        review_names = {material.identity.name: material for material in screening_data.materials}
+        review_name = st.selectbox("Review material record", list(review_names), key="ashby_review_material")
+        review_material = review_names[review_name]
+        st.dataframe(material_review_rows(review_material), width="stretch", hide_index=True)
+        st.caption(
+            review_material.fatigue.fatigue_quality_note
+            or "No fatigue quality note is available for this sample record."
+        )
 
 
 st.set_page_config(page_title=f"Fatigue Life Estimator (v{PROJECT_VERSION})", layout="wide")
@@ -276,7 +338,7 @@ with st.expander("Nomenclature & Symbols", expanded=False):
     st.caption("Thesis nomenclature source was not found in this repository, so this panel uses the app's model-based baseline nomenclature.")
     _render_nomenclature()
 
-_render_materials_selection_scaffold()
+_render_materials_selection_workflow()
 
 model_mode = st.radio(
     "Select deterministic model",
