@@ -1,4 +1,4 @@
-# Stress-Based Fatigue Analysis — Web Estimator v2.1.0
+# Stress-Based Fatigue Analysis — Web Estimator v2.2.0
 
 This repository now includes a lightweight web app for quick-reference fatigue-life estimation.
 
@@ -14,6 +14,7 @@ This repository now includes a lightweight web app for quick-reference fatigue-l
 - Includes a **unit-system toggle** (SI primary or Imperial primary) with inline passive conversions next to inputs.
 - Uses rendered GitHub math and the same scientist-friendly symbols used in the app's **Nomenclature & Symbols** panel.
 - Reports estimated life $N_f$, key intermediate values, engineering graphs, and caution notes.
+- Includes a user-facing **Ashby material screening workflow** with property-axis selection, family/material filters, an optional performance-index guideline, a responsive plot, and per-material review details.
 
 ## Models and equations
 
@@ -254,26 +255,38 @@ The current code is structured to allow a part catalog layer next:
 - prefill those defaults in UI,
 - keep values user-overridable for what-if exploration.
 
-## Materials-selection scaffold (Ashby, new)
+## Ashby material screening workflow
 
-This repository now includes a **first-phase scaffold** for engineering materials selection with fatigue-aware properties:
+The Streamlit app includes an expanded **Ashby material screening** section above the fatigue calculator. It provides:
+
+- selectable horizontal and vertical properties,
+- material-family and individual-material filters,
+- a responsive log-log Ashby plot grouped by family,
+- an optional user-defined power-law performance-index guideline,
+- explicit messages for empty selections, duplicate axes, and missing/non-finite/non-positive log-axis values,
+- and a material review table with the sample record's exact values and fatigue-quality note.
+
+The workflow uses the repository's current illustrative sample records. Those values are **screening examples only**, not design-certified allowables, calibrated rankings, or a substitute for validated supplier and test data.
+
+The supporting modules remain reusable:
 
 - `materials_selection_types.py`: typed domain records for material identity, mechanical properties, fatigue descriptors, constraints, criteria, and Ashby payload shapes.
 - `materials_selection_service.py`: selection/constraint engine shell with explicit TODO placeholders for calibrated weighting, normalization, and uncertainty-aware ranking.
 - `ashby_plot_adapter.py`: plotting adapter shell that maps selected material properties to Ashby-like x/y payload points and highlight flags.
 - `materials_selection_stubs.py`: tiny synthetic input stubs demonstrating expected request/material schema.
-- `app.py`: a discoverability section in Streamlit ("Materials selection scaffold (Ashby)") showing scaffold inputs, deterministic baseline ranking output, and payload preview.
+- `ashby_workflow.py`: safe filtering, property mapping, log-axis validation, plot-point preparation, and review-detail formatting.
+- `app.py`: the visible Streamlit controls, plot rendering, validation messages, and material review workflow.
 
 ### What is intentionally not finalized yet
 
 - No literature-grounded calibration of fatigue-property distributions.
 - No validated multi-objective optimization/weighting policy.
-- No final plotting style/class envelopes/Pareto overlays.
+- No class envelopes, Pareto overlays, or calibrated performance-index policy.
 - No claim that scaffold outputs are design-certification quality.
 
 ### How to extend in the next phase
 
 1. Replace synthetic stubs with curated literature/experiment-backed datasets.
 2. Implement and validate domain-approved weighting and constraint semantics.
-3. Plug Ashby payload output into finalized plotting routines and design-space overlays.
+3. Add validated class envelopes and design-space overlays where supported by curated data.
 4. Add uncertainty handling and regression tests against benchmark case studies.
