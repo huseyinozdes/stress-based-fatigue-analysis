@@ -168,7 +168,10 @@ export_interactive_ashby_html(plot, "ashby_plot.html")
 
 ## Weibull data input format
 
-In the app's reliability section, enter one sample per line:
+In the app's reliability section, Weibull estimation is **opt-in** by default.  
+Use real fatigue test data for decision support; the app also provides an optional demo dataset loader for quick UI checks.
+
+When enabled, enter one sample per line:
 
 - `25000, fail`
 - `80000, runout`

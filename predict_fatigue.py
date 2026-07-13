@@ -67,6 +67,8 @@ def main():
     
     engine = FatigueEngine()
     results = []
+    success_count = 0
+    error_count = 0
     
     for i, tensile in enumerate(tensile_list):
         try:
@@ -88,16 +90,20 @@ def main():
             print(f"Correction: {result['correction_model']} (param={result['correction_parameter']:.3f})")
             print(f"Corrected Stress Amplitude: {result['corrected_stress_amplitude']:.2f} MPa")
             print(f"Predicted Cycles: {result['predicted_cycles']:.2e}")
+            success_count += 1
             
         except FatigueCalculationError as e:
             print(f"Error in sample {i}: {e}", file=sys.stderr)
             results.append({'sample_index': i, 'error': str(e)})
+            error_count += 1
     
     # Save results if requested
     if args.output:
         with open(args.output, 'w') as f:
             json.dump(results, f, indent=2)
         print(f"\nResults saved to {args.output}")
+
+    print(f"\nRun summary: {len(results)} sample(s), {success_count} succeeded, {error_count} failed")
 
 
 if __name__ == '__main__':
