@@ -3,6 +3,7 @@
 This repository now includes a lightweight web app for quick-reference fatigue-life estimation.
 
 **Live App:** [https://stressbasedfatigue.streamlit.app](https://stressbasedfatigue.streamlit.app)
+> **Note:** If the live app is unavailable, deploy it yourself in one click via the [Streamlit Community Cloud deployment steps](#easiest-deployment-path-immediate-publishing) below.
 
 ## What this v2 tool does
 
@@ -157,14 +158,15 @@ python3 -m pytest -q
 
 **Streamlit Community Cloud** is the fastest option for this stack:
 
-1. Push this branch/repo to GitHub.
-2. In Streamlit Community Cloud, create a new app from the repo.
+1. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
+2. Click **New app** → select the `huseyinozdes/stress-based-fatigue-analysis` repo.
 3. Set:
-   - entrypoint: `app.py`
-   - Python dependencies: `requirements.txt`
-4. Deploy.
+   - Branch: `main`
+   - Main file path: `app.py`
+   - App URL (optional custom subdomain): `stressbasedfatigue`
+4. Click **Deploy**.
 
-For production hardening later, Render/Fly/other container-hosted options are straightforward from the same app.
+The app will be live at `https://stressbasedfatigue.streamlit.app` once deployed.
 
 ## Assumptions and current limits
 
