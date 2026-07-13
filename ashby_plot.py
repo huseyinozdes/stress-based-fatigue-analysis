@@ -22,17 +22,17 @@ _DEFAULT_FAMILY_STYLES: dict[str, dict[str, object]] = {
 }
 
 _TOOLTIP_CSS = """
-table {
+.mpld3-tooltip table {
   border-collapse: collapse;
   font-family: Arial, sans-serif;
   font-size: 12px;
 }
-th {
+.mpld3-tooltip th {
   text-align: left;
   padding-right: 8px;
   vertical-align: top;
 }
-td {
+.mpld3-tooltip td {
   vertical-align: top;
 }
 """

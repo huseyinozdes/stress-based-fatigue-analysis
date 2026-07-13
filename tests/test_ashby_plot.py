@@ -87,6 +87,7 @@ def test_interactive_html_contains_review_fields() -> None:
     assert "Review note" in html
     assert "Confidence" in html
     assert "Source" in html
+    assert ".mpld3-tooltip table" in html
     plt.close(plot.figure)
 
 
