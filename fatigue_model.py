@@ -123,6 +123,11 @@ MATERIALS: dict[str, Material] = {
         sy_mpa=655.0,
     ),
     "Al 6061-T6": Material("Al 6061-T6", sut_mpa=310.0, sy_mpa=276.0),
+    "Ti-6Al-4V (annealed)": Material("Ti-6Al-4V (annealed)", sut_mpa=950.0, sy_mpa=880.0),
+    "AISI 304 stainless (annealed)": Material("AISI 304 stainless (annealed)", sut_mpa=515.0, sy_mpa=205.0),
+    "Al 7075-T6": Material("Al 7075-T6", sut_mpa=572.0, sy_mpa=503.0),
+    "EN-GJL-250 gray cast iron": Material("EN-GJL-250 gray cast iron", sut_mpa=250.0, sy_mpa=165.0),
+    "AISI 1020 steel (hot-rolled)": Material("AISI 1020 steel (hot-rolled)", sut_mpa=380.0, sy_mpa=210.0),
 }
 
 STRAIN_LIFE_DEFAULTS: dict[str, dict[str, float]] = {
@@ -146,6 +151,41 @@ STRAIN_LIFE_DEFAULTS: dict[str, dict[str, float]] = {
         "epsilon_f_prime": 0.32,
         "basquin_b": -0.085,
         "coffin_c": -0.62,
+    },
+    "Ti-6Al-4V (annealed)": {
+        "elastic_modulus_mpa": 114_000.0,
+        "sigma_f_prime_mpa": 1500.0,
+        "epsilon_f_prime": 0.80,
+        "basquin_b": -0.095,
+        "coffin_c": -0.69,
+    },
+    "AISI 304 stainless (annealed)": {
+        "elastic_modulus_mpa": 193_000.0,
+        "sigma_f_prime_mpa": 1000.0,
+        "epsilon_f_prime": 0.17,
+        "basquin_b": -0.12,
+        "coffin_c": -0.45,
+    },
+    "Al 7075-T6": {
+        "elastic_modulus_mpa": 71_700.0,
+        "sigma_f_prime_mpa": 740.0,
+        "epsilon_f_prime": 0.19,
+        "basquin_b": -0.106,
+        "coffin_c": -0.60,
+    },
+    "EN-GJL-250 gray cast iron": {
+        "elastic_modulus_mpa": 100_000.0,
+        "sigma_f_prime_mpa": 440.0,
+        "epsilon_f_prime": 0.01,
+        "basquin_b": -0.12,
+        "coffin_c": -0.60,
+    },
+    "AISI 1020 steel (hot-rolled)": {
+        "elastic_modulus_mpa": 200_000.0,
+        "sigma_f_prime_mpa": 620.0,
+        "epsilon_f_prime": 0.59,
+        "basquin_b": -0.081,
+        "coffin_c": -0.56,
     },
 }
 
