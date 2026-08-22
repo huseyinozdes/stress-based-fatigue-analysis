@@ -93,3 +93,48 @@ The thesis references and analyzes data from studies on:
 - Rotating bending fatigue test theory and conversion methods
 
 For comprehensive reference list, consult the full thesis at https://digitalcommons.unf.edu/etd/716/
+
+---
+
+## Engineering references for material constants and fatigue methods
+
+The material constants in this estimator are derived from or consistent with the following standard engineering references. These are not exhaustive; engineers should consult primary literature and material certificates for design-critical applications.
+
+### Fatigue theory and S-N / ε-N models
+
+1. **Shigley's Mechanical Engineering Design** — Budynas, R. G. & Nisbett, J. K. (10th ed., McGraw-Hill, 2015).  
+   Primary source for Marin modification factors, Goodman criterion, and Basquin S-N fitting procedure used in this estimator.
+
+2. **Metal Fatigue in Engineering** — Stephens, R. I., Fatemi, A., Stephens, R. R., & Fuchs, H. O. (2nd ed., Wiley-Interscience, 2000).  
+   Comprehensive treatment of S-N, ε-N, mean-stress corrections, and notch-sensitivity.
+
+3. **Fatigue of Materials** — Suresh, S. (2nd ed., Cambridge University Press, 1998).  
+   Detailed coverage of crack initiation, Paris' law crack propagation, and Weibull fracture statistics.
+
+4. **Mechanical Behavior of Materials** — Dowling, N. E. (4th ed., Pearson, 2013).  
+   Manson-Coffin-Basquin strain-life model, Morrow correction, and transition life derivations.
+
+### Material property data sources
+
+5. **ASM Handbook, Vol. 19: Fatigue and Fracture** — ASM International (1996).  
+   Authoritative fatigue property database for steels, aluminium alloys, and titanium alloys. Source for Basquin and Coffin-Manson constants.
+
+6. **Metallic Materials Properties Development and Standardization (MMPDS)** — Federal Aviation Administration / Battelle (current edition).  
+   Statistically qualified $S_{ut}$, $S_y$, and fatigue allowables for aerospace materials including Ti-6Al-4V and Al 7075-T6.
+
+7. **MIL-HDBK-5J: Metallic Materials and Elements for Aerospace Vehicle Structures** — US DoD (2003; superseded by MMPDS).  
+   Historical source for Al 6061-T6, Al 7075-T6, and titanium alloy design allowables.
+
+8. **EN 1561:2011 — Founding: Grey Cast Irons** — European Committee for Standardisation (CEN).  
+   Specification standard for EN-GJL-250 mechanical property requirements.
+
+### Weibull statistics
+
+9. **Statistical Models in Engineering** — Hald, A. (Wiley, 1952); and  
+   **The New Weibull Handbook** — Abernethy, R. B. (5th ed., self-published, 2006).  
+   Two-parameter Weibull MLE with right-censored (run-out) data: parameter estimation and $B$-life quantile derivations.
+
+### Walker and quality-index models (fatigue engine)
+
+10. **Özdeş, H.** (2014). *The Relationship Between High-Cycle Fatigue and Tensile Properties in Cast Aluminum Alloys.* University of North Florida. https://digitalcommons.unf.edu/etd/716/  
+    Primary thesis: quality-index ($Q_T$), Walker exponent, and S-N estimation from tensile data for cast aluminium alloys. Direct basis for `fatigue_engine.py`.
