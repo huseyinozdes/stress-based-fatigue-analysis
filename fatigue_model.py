@@ -189,6 +189,49 @@ STRAIN_LIFE_DEFAULTS: dict[str, dict[str, float]] = {
     },
 }
 
+MATERIAL_USE_CASES: dict[str, tuple[str, ...]] = {
+    "AISI 1045 steel (normalized)": (
+        "Shafts, axles, and crankshafts in automotive drivetrains",
+        "Structural bolts and high-cycle rotating machine components",
+        "Agricultural and construction equipment gears",
+    ),
+    "AISI 4140 steel (quenched & tempered)": (
+        "Aircraft landing gear, oil-country drill collars, and tooling spindles",
+        "High-load automotive and motorsport connecting rods",
+        "Hydraulic cylinder rods and precision shafts under combined loading",
+    ),
+    "Al 6061-T6": (
+        "Aerospace frames, bicycle frames, and marine structural extrusions",
+        "Automotive suspension components where weight reduction is critical",
+        "Electronic enclosures and machined fixtures requiring good corrosion resistance",
+    ),
+    "Ti-6Al-4V (annealed)": (
+        "Jet engine compressor blades and aerospace primary structures",
+        "Orthopedic implants and surgical instrumentation (biocompatible)",
+        "High-performance motorsport and offshore structural fasteners",
+    ),
+    "AISI 304 stainless (annealed)": (
+        "Chemical process piping, pressure vessels, and food-grade equipment",
+        "Marine hardware and coastal architectural structures",
+        "Pharmaceutical and biomedical devices where sterilisability is required",
+    ),
+    "Al 7075-T6": (
+        "Wing spars, bulkheads, and aircraft structural skins",
+        "High-performance bicycle and motorsport chassis components",
+        "Precision mold tooling and jigs where strength-to-weight is paramount",
+    ),
+    "EN-GJL-250 gray cast iron": (
+        "Lathe beds, milling machine columns, and large press frames requiring vibration damping",
+        "Engine blocks, cylinder heads, and exhaust manifolds in heavy machinery",
+        "Hydraulic valve bodies and pump housings in industrial fluid systems",
+    ),
+    "AISI 1020 steel (hot-rolled)": (
+        "Welded structural frames, brackets, and general fabrications",
+        "Low-stress shafts, pins, and keystock in light-duty machinery",
+        "Automotive body stampings and domestic appliance structural panels",
+    ),
+}
+
 
 def _validate_inputs(inputs: FatigueInput) -> None:
     if inputs.diameter_mm <= 0:

@@ -9,6 +9,7 @@ import ashby_plot_adapter as _ashby_plot_adapter
 from fatigue_model import (
     LOAD_FACTOR,
     MATERIALS,
+    MATERIAL_USE_CASES,
     RELIABILITY_FACTOR,
     STRAIN_LIFE_DEFAULTS,
     SURFACE_FINISH_COEFFICIENTS,
@@ -305,7 +306,35 @@ else:
 
 col1, col2 = st.columns(2)
 with col1:
-    material_name = st.selectbox("Material", list(MATERIALS.keys()), index=0)
+    # -- Material selector with inline ⓘ use-case tooltip --
+    _mat_col, _info_col = st.columns([6, 1])
+    with _mat_col:
+        material_name = st.selectbox("Material", list(MATERIALS.keys()), index=0, label_visibility="visible")
+    with _info_col:
+        _use_cases = MATERIAL_USE_CASES.get(material_name, ())
+        if _use_cases:
+            _tooltip_lines = "\n".join(f"• {uc}" for uc in _use_cases)
+            st.markdown(
+                f"""<div style="margin-top:28px">
+                <span title="{_tooltip_lines}" style="
+                    display:inline-flex;
+                    align-items:center;
+                    justify-content:center;
+                    width:22px;height:22px;
+                    border-radius:50%;
+                    background:#1e3a5f;
+                    color:#ffffff;
+                    font-size:12px;
+                    font-weight:700;
+                    font-family:'Inter','Segoe UI',sans-serif;
+                    cursor:default;
+                    user-select:none;
+                    box-shadow:0 1px 4px rgba(0,0,0,0.25);
+                    letter-spacing:0;
+                ">ⓘ</span>
+                </div>""",
+                unsafe_allow_html=True,
+            )
     diameter_value = st.number_input(
         f"Section diameter, d ({diameter_unit})",
         min_value=0.001,
