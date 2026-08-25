@@ -44,7 +44,9 @@ Cast aluminum alloys are common in automotive and aerospace applications due to 
 ## Key Methodologies Implemented
 
 ### 1. Structural Quality Index (QT)
-$$Q_T = \frac{\sigma_T}{\sigma_U} \times \ln(1 + e_f)$$
+$$
+Q_T = \frac{\sigma_T}{\sigma_U} \ln(1 + e_f)
+$$
 
 where:
 - σ_T = tensile strength
@@ -52,7 +54,9 @@ where:
 - e_f = elongation at fracture
 
 ### 2. Mean Stress Correction: Walker Model
-$$\sigma'_a = \sigma_a (1 - R)^{-p}$$
+$$
+\sigma_a' = \sigma_a (1 - R)^{-p}
+$$
 
 where:
 - σ_a = alternating stress amplitude
@@ -60,14 +64,18 @@ where:
 - p = Walker exponent (correlates with QT)
 
 ### 3. Basquin S-N Model
-$$\sigma_a = A \cdot N_f^b$$
+$$
+\sigma_a = A N_f^b
+$$
 
 where:
 - A, b = Basquin parameters (empirically determined from QT)
 - N_f = fatigue life (cycles)
 
 ### 4. Weibull Distribution for Fracture Statistics
-$$P = 1 - \exp\left[-V\left(\frac{\sigma - \sigma_T}{\sigma_0}\right)^m\right]$$
+$$
+P = 1 - \exp\left[-V\left(\frac{\sigma - \sigma_T}{\sigma_0}\right)^m\right]
+$$
 
 where:
 - P = probability of failure
@@ -76,7 +84,9 @@ where:
 - σ_T = threshold stress
 
 ### 5. Rotating Beam to Axial Fatigue Conversion (Esin Method)
-$$\sigma_{a|ax} = \frac{2\sigma_{a|rb}}{3}\left(\frac{1 - k^3}{1 - k^2}\right)$$
+$$
+\sigma_{a,\mathrm{ax}} = \frac{2\sigma_{a,\mathrm{rb}}}{3}\left(\frac{1 - k^3}{1 - k^2}\right)
+$$
 
 where k = d/D (ratio of elastic core diameter to specimen diameter)
 
@@ -138,3 +148,26 @@ The material constants in this estimator are derived from or consistent with the
 
 10. **Özdeş, H.** (2014). *The Relationship Between High-Cycle Fatigue and Tensile Properties in Cast Aluminum Alloys.* University of North Florida. https://digitalcommons.unf.edu/etd/716/  
     Primary thesis: quality-index ($Q_T$), Walker exponent, and S-N estimation from tensile data for cast aluminium alloys. Direct basis for `fatigue_engine.py`.
+
+## Nomenclature
+
+Rendered as thesis-style symbols:
+
+| Symbol | Definition | Units |
+| --- | --- | --- |
+| $Q_T$ | Structural quality index | dimensionless |
+| $\sigma_a$ | Alternating stress amplitude | MPa |
+| $\sigma_a^\prime$ | Walker-adjusted alternating stress amplitude | MPa |
+| $R$ | Stress ratio, $\sigma_{\min}/\sigma_{\max}$ | dimensionless |
+| $p$ | Walker exponent | dimensionless |
+| $A$ | Basquin coefficient | MPa |
+| $b$ | Basquin exponent | dimensionless |
+| $N_f$ | Cycles to failure | cycles |
+| $P$ | Failure probability | dimensionless |
+| $V$ | Effective stressed volume | volume |
+| $\sigma_T$ | Threshold stress | MPa |
+| $\sigma_0$ | Weibull scale parameter | MPa |
+| $m$ | Weibull shape parameter | dimensionless |
+| $\sigma_{a,\mathrm{ax}}$ | Axial-equivalent alternating stress | MPa |
+| $\sigma_{a,\mathrm{rb}}$ | Rotating-beam alternating stress | MPa |
+| $k$ | Esin conversion factor ratio | dimensionless |
