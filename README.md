@@ -43,17 +43,17 @@ $$
 The rotating-beam baseline and Marin correction path are:
 
 $$
-S_e' = 0.5 S_{ut}
+S_e^\prime = 0.5 S_{ut}
 $$
 
 $$
-S_e = k_a k_b k_c k_d k_e k_f S_e'
+S_e = k_a k_b k_c k_d k_e S_e^\prime
 $$
 
 ### Goodman correction
 
 $$
-\sigma_{a,eq} = \frac{\sigma_a}{1 - \sigma_m/S_{ut}}
+\sigma_{a,\mathrm{eq}} = \frac{\sigma_a}{1 - \sigma_m/S_{ut}}
 $$
 
 ### Basquin stress-life relation
@@ -165,7 +165,7 @@ The estimator ships with **8 engineering materials** spanning four families. All
 
 † Gray cast iron does not exhibit a well-defined tensile yield point; 165 MPa is a conservative compressive proxy used for yield-exceedance checks only. Cast iron is compressive-dominant: compressive strength is typically 3–4× tensile strength.
 
-**Endurance limit note:** steels with $S_{ut} \leq 1400\ \mathrm{MPa}$ use $S_e' = 0.5\,S_{ut}$. Aluminium alloys, titanium, and stainless steel have no true endurance limit; use results at $10^7$ cycles as a screening proxy.
+**Endurance limit note:** steels with $S_{ut} \leq 1400\ \mathrm{MPa}$ use $S_e^\prime = 0.5\,S_{ut}$. Aluminium alloys, titanium, and stainless steel have no true endurance limit; use results at $10^7$ cycles as a screening proxy.
 
 ### Typical applications
 
@@ -279,24 +279,36 @@ All cycles must be positive.
 
 ## Nomenclature and symbols
 
-The app includes a top-level **Nomenclature & Symbols** expander. The README mirrors that notation here for quick reference.
+The app includes a top-level **Nomenclature & Symbols** expander. The README mirrors that notation here in thesis-style form, using rendered subscripts and superscripts instead of literal underscore syntax.
 
-| Symbol | Meaning | Units |
+### Subscripts and symbols
+
+| Symbol | Definition | Units |
 |---|---|---|
 | $d$ | Section diameter | mm or in |
 | $A$ | Section area | mm$^2$ |
 | $F_m,\ F_a$ | Mean and alternating axial force | N or lbf |
-| $M_m,\ M_a$ | Mean and alternating bending moment | N*m or lbf*in |
+| $M_m,\ M_a$ | Mean and alternating bending moment | N·mm or lbf·in |
 | $\sigma_m,\ \sigma_a$ | Mean and alternating nominal stress | MPa or ksi |
-| $\sigma_{a,eq}$ | Goodman-equivalent alternating stress | MPa or ksi |
+| $\sigma_{a,\mathrm{eq}}$ | Goodman-equivalent alternating stress | MPa or ksi |
 | $S_{ut}$ | Ultimate tensile strength | MPa or ksi |
-| $S_e',\ S_e$ | Uncorrected and corrected endurance limit | MPa or ksi |
+| $S_e^\prime,\ S_e$ | Uncorrected and corrected endurance limit | MPa or ksi |
 | $N_f$ | Cycles to failure | cycles |
 | $\varepsilon_a$ | Total strain amplitude | mm/mm |
-| $\sigma_f',\ \varepsilon_f',\ b,\ c,\ E$ | Strain-life material constants | -, MPa or ksi |
-| $\beta,\ \eta$ | Weibull shape and scale parameters | -, cycles |
+| $\sigma_f^\prime,\ \varepsilon_f^\prime,\ b,\ c,\ E$ | Strain-life material constants | –, MPa or ksi |
+| $\beta,\ \eta$ | Weibull shape and scale parameters | –, cycles |
 | $R(N)$ | Survival probability at cycle count $N$ | 0 to 1 |
 | $B_{10},\ B_{50}$ | 10% and 50% failure-life quantiles | cycles |
+
+### Preferred notation
+
+| Quantity | Preferred form |
+|---|---|
+| Mean stress correction | $\sigma_{a,\mathrm{eq}}$ |
+| Axial-equivalent stress | $\sigma_{a,\mathrm{ax}}$ |
+| Rotating-beam stress | $\sigma_{a,\mathrm{rb}}$ |
+| Stress amplitude | $\sigma_a$ |
+| Stress ratio | $R = \sigma_{\min}/\sigma_{\max}$ |
 
 ## Local run
 

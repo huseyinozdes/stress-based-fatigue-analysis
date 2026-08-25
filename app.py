@@ -83,6 +83,45 @@ def _normalize_error_for_units(message: str, unit_system: UnitSystem) -> str:
     return mapped
 
 
+_MATERIAL_FAMILY_PRIORITY = {
+    "Steel": 0,
+    "Stainless Steel": 1,
+    "Aluminum": 2,
+    "Titanium": 3,
+    "Cast Iron": 4,
+    "Other": 5,
+}
+
+
+def _material_family_label(material_name: str) -> str:
+    normalized = material_name.casefold()
+    if "stainless" in normalized:
+        return "Stainless Steel"
+    if "cast iron" in normalized or "gray iron" in normalized:
+        return "Cast Iron"
+    if normalized.startswith("al ") or normalized.startswith("al-") or " aluminum" in normalized:
+        return "Aluminum"
+    if normalized.startswith("ti-") or " titanium" in normalized:
+        return "Titanium"
+    if "steel" in normalized:
+        return "Steel"
+    return "Other"
+
+
+def _material_display_label(material_name: str) -> str:
+    family = _material_family_label(material_name)
+    return f"{family} — {material_name}" if family != "Other" else material_name
+
+
+def _material_sort_key(material_name: str) -> tuple[int, str, str]:
+    family = _material_family_label(material_name)
+    return (
+        _MATERIAL_FAMILY_PRIORITY.get(family, _MATERIAL_FAMILY_PRIORITY["Other"]),
+        family.casefold(),
+        material_name.casefold(),
+    )
+
+
 def _sn_curve_data(stress_result: object, unit_system: UnitSystem) -> list[dict[str, float | str]]:
     data: list[dict[str, float | str]] = []
     for n in _logspace_10(3.0, 8.0, 80):
@@ -257,6 +296,28 @@ def _render_materials_selection_scaffold() -> None:
             st.write(f"- {todo}")
 
 
+def _render_material_help_button(material_name: str) -> None:
+    use_cases = MATERIAL_USE_CASES.get(material_name, ())
+    with st.popover(
+        "ⓘ",
+        help="Show starter use cases and a brief model-background note for the selected material.",
+        type="tertiary",
+        width="content",
+    ):
+        st.markdown("**Starter use cases**")
+        if use_cases:
+            for use_case in use_cases[:3]:
+                st.write(f"- {use_case}")
+        else:
+            st.caption("No starter use cases are listed for this material yet.")
+
+        st.markdown("**Model background**")
+        st.caption(
+            "These materials are seeded examples for fatigue screening and selection workflows. "
+            "Use measured properties and allowables for final design decisions."
+        )
+
+
 st.set_page_config(page_title=f"Fatigue Life Estimator (v{PROJECT_VERSION})", layout="wide")
 st.title(f"Fatigue Life Estimator (v{PROJECT_VERSION})")
 st.caption("Quick engineering fatigue estimator for screening decisions. Results are estimates, not design certification.")
@@ -270,6 +331,20 @@ with st.expander("Model options", expanded=False):
         - **Stress-life (S-N):** Basquin + Marin factors + Goodman correction using $\\sigma_a,\\sigma_m,S_e,S_{ut},N_f$
         - **Strain-life (epsilon-N):** Manson-Coffin-Basquin with Morrow correction using $\\varepsilon_a,\\sigma_f',\\varepsilon_f',b,c,E$
         - **Reliability statistics:** two-parameter Weibull with right-censored run-out handling
+        """
+    )
+    st.caption(
+        "Stress-life screening is best for high-cycle, mostly elastic service loading; strain-life is better when local plasticity matters. "
+        "These models are standard first-pass methods for comparing materials, sizing rotating components, and checking whether a design is in the fatigue regime rather than the static-strength regime."
+    )
+
+with st.expander("Selected references", expanded=False):
+    st.markdown(
+        """
+        1. Shigley, Budynas & Nisbett¹ — Marin factors, Goodman correction, and Basquin fitting.
+        2. Stephens, Fatemi, Stephens & Fuchs² — fatigue life modelling and mean-stress correction.
+        3. Suresh³ — crack initiation, propagation, and fracture mechanics background.
+        4. Dowling⁴ — strain-life theory, Morrow correction, and transition-life derivations.
         """
     )
 
@@ -306,35 +381,17 @@ else:
 
 col1, col2 = st.columns(2)
 with col1:
-    # -- Material selector with inline ⓘ use-case tooltip --
-    _mat_col, _info_col = st.columns([6, 1])
+    _mat_col, _info_col = st.columns([6, 1], vertical_alignment="bottom")
     with _mat_col:
-        material_name = st.selectbox("Material", list(MATERIALS.keys()), index=0, label_visibility="visible")
+        material_name = st.selectbox(
+            "Material",
+            sorted(MATERIALS.keys(), key=_material_sort_key),
+            index=0,
+            format_func=_material_display_label,
+            label_visibility="visible",
+        )
     with _info_col:
-        _use_cases = MATERIAL_USE_CASES.get(material_name, ())
-        if _use_cases:
-            _tooltip_lines = "\n".join(f"• {uc}" for uc in _use_cases)
-            st.markdown(
-                f"""<div style="margin-top:28px">
-                <span title="{_tooltip_lines}" style="
-                    display:inline-flex;
-                    align-items:center;
-                    justify-content:center;
-                    width:22px;height:22px;
-                    border-radius:50%;
-                    background:#1e3a5f;
-                    color:#ffffff;
-                    font-size:12px;
-                    font-weight:700;
-                    font-family:'Inter','Segoe UI',sans-serif;
-                    cursor:default;
-                    user-select:none;
-                    box-shadow:0 1px 4px rgba(0,0,0,0.25);
-                    letter-spacing:0;
-                ">ⓘ</span>
-                </div>""",
-                unsafe_allow_html=True,
-            )
+        _render_material_help_button(material_name)
     diameter_value = st.number_input(
         f"Section diameter, d ({diameter_unit})",
         min_value=0.001,
