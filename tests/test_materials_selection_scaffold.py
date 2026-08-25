@@ -100,10 +100,10 @@ def test_ashby_adapter_payload_contains_axis_and_points() -> None:
 
     assert payload.x_axis.label.startswith("Density")
     assert payload.y_axis.label.startswith("Endurance")
-    assert len(payload.points) == len(EXAMPLE_MATERIALS)
+    assert len(payload.points) == len(EXAMPLE_MATERIALS) - len(payload.dropped_points)
     assert any(point.is_highlighted for point in payload.points)
     assert payload.highlighted_material_ids == ("steel-aisi1045",)
-    assert "dropped_points=0" in payload.filters_applied
+    assert "dropped_points=3" in payload.filters_applied
 
 
 def test_ashby_adapter_marks_dropped_points_with_structured_metadata() -> None:
